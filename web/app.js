@@ -5,6 +5,9 @@
 // 发布在 claude.ai 时页面跑在受限框架里：下载走 downloads 能力，没有系统通知和日历文件
 const HOSTED = !!(window.claude && window.claude.use);
 if (HOSTED) document.documentElement.classList.add('hosted');
+// 在 iOS App（ios/）里运行时：系统通知、Apple 健康和分享交给原生
+const NATIVE = !!window.webkit?.messageHandlers?.native;
+function nativePost(msg) { window.webkit.messageHandlers.native.postMessage(msg); }
 // 发布后的地址，用来生成好友挑战链接
 const ARTIFACT_URL = 'https://claude.ai/artifact/22zvkRemP6et368RX8PPA8';
 
@@ -119,6 +122,10 @@ function toast(msg) {
 }
 
 async function saveFile(name, text, type) {
+  if (NATIVE) {
+    nativePost({ type: 'share', filename: name, text });
+    return true;
+  }
   if (HOSTED) {
     const dl = await window.claude.use('downloads');
     if (!dl) { toast('这里暂时不能保存文件'); return false; }
@@ -1401,6 +1408,7 @@ function renderBody() {
         <div><label>日期</label><div class="field"><input id="in-date" type="date" value="${dateKey()}" max="${dateKey()}"></div></div>
         <div style="display:flex;align-items:flex-end"><button class="btn primary block" data-act="save-body">保存记录</button></div>
       </div>
+      ${NATIVE ? '<button class="btn block health-btn" data-act="health">❤️ 从 Apple 健康导入体重、体脂和身高</button>' : ''}
       <button class="link" data-act="tape">${state.tape ? '收起软尺估算' : '没有体脂秤？用软尺估算体脂率'}</button>
       ${state.tape ? tapeHtml() : ''}
     </div>
@@ -1660,6 +1668,10 @@ view.addEventListener('click', e => {
       return;
 
     // 身体数据
+    case 'health':
+      nativePost({ type: 'health' });
+      toast('正在读取 Apple 健康…');
+      return;
     case 'bi-sex':
       data.bodyInfo = { ...data.bodyInfo, sex: el.dataset.v };
       break;
@@ -1734,8 +1746,9 @@ view.addEventListener('change', e => {
   if (toMin(r.end) <= toMin(r.start)) toast('下班时间要晚于上班时间');
   // 打开或改时间后，之前已经过去的时刻不再补提醒
   r.lastFired = Date.now();
-  if (k === 'on' && r.on && 'Notification' in window && Notification.permission === 'default') askNotify();
+  if (k === 'on' && r.on && !NATIVE && 'Notification' in window && Notification.permission === 'default') askNotify();
   save();
+  syncNativeReminders();
   render();
 });
 
@@ -1915,7 +1928,7 @@ function shareChallenge() {
 function shareText() {
   const payload = { n: data.profile.name, w: mondayKey(), xp: weekXp(), s: streak(), a: accuracy() };
   const code = 'vs-' + b64encode(payload);
-  const base = HOSTED ? ARTIFACT_URL : `${location.origin}${location.pathname}`;
+  const base = HOSTED || NATIVE ? ARTIFACT_URL : `${location.origin}${location.pathname}`;
   const head = `我这周在「练了吗」拿了 ${payload.xp} XP，连续 ${payload.s} 天🔥 敢来比吗？`;
   return base ? `${head}\n${base}#${code}` : `${head}\n挑战码：${code}`;
 }
@@ -2038,14 +2051,26 @@ function remindCard() {
         </div>
         <label class="row check-row"><input type="checkbox" data-r="workdays" ${r.workdays ? 'checked' : ''}> 只在工作日（周一到周五）</label>
         <div class="remind-actions">
-          ${HOSTED ? '' : permBtn}
-          ${HOSTED ? '' : '<button class="btn small" data-act="ics">📅 加到手机日历</button>'}
+          ${HOSTED || NATIVE ? '' : permBtn}
+          ${HOSTED || NATIVE ? '' : '<button class="btn small" data-act="ics">📅 加到手机日历</button>'}
           <button class="btn small ghost" data-act="remind-test">试一下</button>
         </div>
-        <div class="muted remind-note">${HOSTED
+        <div class="muted remind-note">${NATIVE ? nativeRemindNote() : HOSTED
           ? '页面开着时会准时提醒。网页版收不到锁屏通知，想要锁屏也能提醒，可以在手机日历里建一个工作日每小时重复的事件。'
           : 'App 开着时会准时提醒。想在锁屏或关掉 App 时也收到，点「加到手机日历」，交给系统日历提醒。'}</div>` : ''}
     </div>`;
+}
+
+function nativeRemindNote() {
+  const st = state.nativeRemind;
+  if (!st) return '正在安排系统通知…';
+  if (!st.granted) return '通知权限没打开：到 iPhone「设置 → 通知 → 练了吗」里打开，锁屏才能收到提醒。';
+  return `已安排 ${st.count} 个系统提醒，锁屏或关掉 App 也会准时提醒。${st.everyDay ? '提醒比较密，iOS 排不下工作日专属提醒，所以周末也会提醒。' : ''}`;
+}
+function syncNativeReminders() {
+  if (!NATIVE) return;
+  const r = data.remind;
+  nativePost({ type: 'reminders', on: r.on, every: r.every, start: r.start, end: r.end, workdays: r.workdays });
 }
 
 async function askNotify() {
@@ -2062,6 +2087,7 @@ async function askNotify() {
 }
 
 async function notify(title, body) {
+  if (NATIVE) return; // 系统通知已经由原生按时间表排好
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const opts = { body, tag: 'remind', renotify: true, icon: 'icon.svg' };
   try {
@@ -2131,6 +2157,42 @@ function downloadIcs() {
   toast(`已生成 ${slots.length} 个每日提醒，打开文件即可加入日历`);
 }
 
+/* ---------- iOS 原生回调 ---------- */
+
+if (NATIVE) {
+  window.nativeRemindStatus = st => {
+    state.nativeRemind = st;
+    if (st.on && st.granted === false) toast('通知权限没打开，锁屏收不到提醒');
+    if (state.tab === 'path') render();
+  };
+  // 点了系统通知打开 App：弹出页面里的提醒，可以直接开小关或记喝水
+  window.nativeReminderTapped = () => {
+    if (!state.lesson && !state.reminding) fireRemind();
+  };
+  window.nativeHealth = h => {
+    if (h.error) { toast(h.error); return; }
+    const got = [];
+    if (h.weight) {
+      const date = h.weightDate || dateKey();
+      const old = data.body.find(p => p.date === date);
+      // 体脂和体重在 30 天内测的才算同一次
+      const fatClose = h.fat && h.fatDate && Math.abs(parseKey(h.fatDate) - parseKey(date)) <= 30 * 864e5;
+      data.body = data.body.filter(p => p.date !== date);
+      data.body.push({ date, weight: Math.round(h.weight * 10) / 10, fat: fatClose ? Math.round(h.fat * 10) / 10 : old?.fat ?? null });
+      got.push(`体重 ${Math.round(h.weight * 10) / 10} kg`);
+      if (fatClose) got.push(`体脂 ${Math.round(h.fat * 10) / 10}%`);
+    }
+    const bi = { ...data.bodyInfo };
+    if (h.height) { bi.height = Math.round(h.height); got.push(`身高 ${bi.height} cm`); }
+    if (h.age && !bi.age) { bi.age = h.age; got.push(`年龄 ${h.age}`); }
+    if (h.sex && !bi.sex) { bi.sex = h.sex; got.push(h.sex === 'm' ? '性别 男' : '性别 女'); }
+    data.bodyInfo = bi;
+    save();
+    toast(got.length ? `已导入：${got.join('、')}` : 'Apple 健康里没找到数据，或者没有允许读取');
+    render();
+  };
+}
+
 /* ---------- 启动 ---------- */
 
 if (!HOSTED && 'serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -2143,3 +2205,7 @@ window.addEventListener('hashchange', checkChallengeLink);
 render();
 checkChallengeLink();
 tickRemind();
+if (NATIVE) {
+  nativePost({ type: 'ready' });
+  syncNativeReminders();
+}
