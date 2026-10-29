@@ -23,7 +23,7 @@ const STORE_KEY = 'fitness-app.v1';
 function defaults() {
   return {
     logs: {}, body: [], bodyInfo: { sex: null, age: null, height: null }, xp: {}, done: {}, water: {}, waterUnit: { kind: 'cup', ml: 250 }, track: null, profile: null,
-    feel: { right: 0, total: 0 }, feelBy: {}, pr: {}, gen: {}, rival: null,
+    feel: { right: 0, total: 0 }, feelBy: {}, feelOff: false, feelSkip: [], pr: {}, gen: {}, rival: null,
     remind: { on: false, every: 60, start: '09:00', end: '18:00', workdays: true, lastFired: 0 },
     usage: {},
   };
@@ -70,6 +70,9 @@ function weekXp() {
   for (let i = 0; i < 7; i++) sum += data.xp[dateKey(addDays(mon, i))] || 0;
   return sum;
 }
+// 发力感自检默认一直问，直到用户关掉全部或某个动作；设置页可以重新打开
+function feelOn(exId) { return !!FEEL[exId] && !data.feelOff && !data.feelSkip.includes(exId); }
+
 // 试用期统计：只记次数，不记内容
 function bump(key) { data.usage[key] = (data.usage[key] || 0) + 1; save(); }
 
@@ -455,6 +458,7 @@ const PAGES = {
   library: { title: '动作库', render: renderLibrary },
   stats: { title: '训练统计', render: renderStats },
   body: { title: '身体数据', render: renderBody },
+  settings: { title: '设置', render: renderSettings },
 };
 
 function render() {
@@ -478,6 +482,13 @@ document.querySelector('.tabbar').addEventListener('click', e => {
 
 // 标题栏里的「切换路线」按钮
 document.querySelector('.topbar').addEventListener('click', e => {
+  if (e.target.closest('[data-act="settings"]')) {
+    state.tab = 'settings';
+    state.preview = null;
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
   if (!e.target.closest('[data-act="pick-track"]')) return;
   state.picking = true;
   state.preview = null;
@@ -810,6 +821,10 @@ function renderLesson() {
         <div class="fb-head">${mascot(40, fb.mood)}<b>${fb.title}</b></div>
         ${fb.body}
         <button class="btn chunky block ${fb.cls === 'bad' ? 'red' : ''}" data-act="after-feel">继续</button>
+        <div class="feel-off">
+          <button class="link" data-act="feel-skip-ex">这个动作我会了，不用再问</button>
+          <button class="link" data-act="feel-off">以后都不问了</button>
+        </div>
       </div>`;
   }
 
@@ -961,7 +976,7 @@ lessonEl.addEventListener('click', e => {
       if (!(r > 0)) { toast('先填一下次数'); return; }
       L.sets[L.exIdx].push({ w: String(L.cur.w || 0), r: String(r) });
       L.xp += EX_BY_ID[exId].cardio ? cardioXp(r) : XP_SET;
-      if (L.sets[L.exIdx].length === 1 && FEEL[exId]) {
+      if (L.sets[L.exIdx].length === 1 && feelOn(exId)) {
         const f = FEEL[exId];
         L.opts = [
           ...shuffle([{ label: f.good, good: true }, ...f.bad.map(([label, cue]) => ({ label, cue }))]),
@@ -993,6 +1008,18 @@ lessonEl.addEventListener('click', e => {
       break;
     }
     case 'after-feel':
+      afterSet();
+      break;
+    case 'feel-skip-ex':
+      if (!data.feelSkip.includes(exId)) data.feelSkip.push(exId);
+      save();
+      toast(`${EX_BY_ID[exId].name}不再问发力感，可以在设置里打开`);
+      afterSet();
+      break;
+    case 'feel-off':
+      data.feelOff = true;
+      save();
+      toast('已关闭发力感自检，可以在设置里重新打开');
       afterSet();
       break;
     case 'rest-add':
@@ -1075,6 +1102,36 @@ function renderLibrary() {
     <div class="chips">${chips}</div>
     <div id="lib-list">${list || '<div class="empty">没有找到相关动作</div>'}</div>
     ${bar}`;
+}
+
+/* ---------- 设置 ---------- */
+
+function renderSettings() {
+  const skipped = data.feelSkip.filter(id => EX_BY_ID[id]);
+  const list = skipped.length ? `
+    <div class="muted set-sub">这些动作单独关掉了自检：</div>
+    ${skipped.map(id => `
+      <div class="row between history-item">
+        <span>${EX_BY_ID[id].name}</span>
+        <button class="btn small" data-act="feel-unskip" data-id="${id}">重新打开</button>
+      </div>`).join('')}
+    ${skipped.length > 1 ? '<button class="btn small ghost" data-act="feel-unskip-all">全部重新打开</button>' : ''}` : '';
+  return `
+    <div class="section-title">训练</div>
+    <div class="card">
+      <div class="row between">
+        <div><b>发力感自检</b><div class="muted set-sub">每个动作做完第一组，问你哪里最有感觉，帮你确认练对了</div></div>
+        <label class="switch"><input type="checkbox" id="set-feel" data-set="feel" ${data.feelOff ? '' : 'checked'} aria-label="发力感自检"><i></i></label>
+      </div>
+      ${data.feelOff ? '' : list}
+    </div>
+    <div class="card">
+      <div class="row between">
+        <div><b>开场问卷</b><div class="muted set-sub">目标、水平、器材、分化、有氧、伤病</div></div>
+        <button class="btn small" data-act="redo-quiz">重新做</button>
+      </div>
+    </div>
+    <div class="muted set-sub" style="padding:4px 2px">数据备份、好友挑战和试用反馈在「统计」页。</div>`;
 }
 
 /* ---------- 统计 ---------- */
@@ -1460,6 +1517,7 @@ view.addEventListener('click', e => {
       toast('已按你的情况定制好路线');
       break;
     case 'redo-quiz':
+      state.tab = 'path';
       startQuiz();
       state.picking = false;
       break;
@@ -1580,6 +1638,13 @@ view.addEventListener('click', e => {
     case 'vs-enter':
       enterChallenge();
       return;
+    case 'feel-unskip':
+      data.feelSkip = data.feelSkip.filter(x => x !== id);
+      toast(`${EX_BY_ID[id].name}会重新问发力感`);
+      break;
+    case 'feel-unskip-all':
+      data.feelSkip = [];
+      break;
     case 'feedback':
       openFeedback(document.getElementById('feedback-card'));
       return;
@@ -1644,6 +1709,13 @@ view.addEventListener('input', e => {
 
 view.addEventListener('change', e => {
   if (e.target.id === 'import-file') { importBackup(e.target.files[0]); return; }
+  if (e.target.dataset.set === 'feel') {
+    data.feelOff = !e.target.checked;
+    toast(data.feelOff ? '已关闭发力感自检' : '已打开发力感自检');
+    save();
+    render();
+    return;
+  }
   if (e.target.dataset.bi) {
     const v = parseFloat(e.target.value);
     const ok = e.target.dataset.bi === 'age' ? v >= 10 && v <= 100 : v >= 100 && v <= 250;
@@ -1691,7 +1763,7 @@ function usageSummary() {
     `练了吗 · 使用数据（试用第 ${days} 天）`,
     `路线：${track().name}｜安排：${plan}｜有氧：${{ more: '多一点', some: '适量', none: '不加' }[cardioPref()]}｜工作：${work}｜水平：${{ new: '新手', mid: '有基础', pro: '老手' }[p.level]}`,
     `训练天数：${trainedDays} / ${days} 天｜最长连续：${best} 天｜中途退出：${u.quits || 0} 次`,
-    `发力感自检：${asked} 次｜准确率：${accuracy() === null ? '—' : accuracy() + '%'}｜说不清：${unsure} 次（${pct(unsure, asked)}）`,
+    `发力感自检（${data.feelOff ? '已全部关闭' : `开，单独关了 ${data.feelSkip.length} 个动作`}）：${asked} 次｜准确率：${accuracy() === null ? '—' : accuracy() + '%'}｜说不清：${unsure} 次（${pct(unsure, asked)}）`,
     `休息提醒：${data.remind.on ? '开' : '关'}｜弹出 ${u.remindFired || 0} 次 → 做小关 ${u.remindLesson || 0}、喝水 ${u.remindWater || 0}、稍后 ${u.remindSnooze || 0}、关掉 ${u.remindDismiss || 0}`,
     `分化：换成下一天 ${u.splitSkip || 0} 次｜手动换套组 ${u.variantPick || 0} 次`,
     `喝水达标：${waterDays} 天`,
