@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="练了吗">
+  <meta name="theme-color" content="#0f1115">
+  <title>练了吗</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="page-title">今日训练</h1>
+    <span id="page-sub" class="sub"></span>
+  </header>
+
+  <main id="view"></main>
+
+  <nav class="tabbar">
+    <button data-tab="path" class="active"><span class="ico">🗺️</span>闯关</button>
+    <button data-tab="library"><span class="ico">📚</span>动作库</button>
+    <button data-tab="stats"><span class="ico">📈</span>统计</button>
+    <button data-tab="body"><span class="ico">⚖️</span>身体</button>
+  </nav>
+
+  <div id="lesson" class="lesson"></div>
+  <div id="remind-modal" class="remind-modal"></div>
+  <div id="toast" class="toast"></div>
+  <script src="data.js"></script>
+  <script src="figure.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
