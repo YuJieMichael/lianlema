@@ -157,18 +157,18 @@ async function saveFile(name, text, type) {
 // 吉祥物「小铁」：戴头带的哑铃球
 function mascot(size = 64, mood = 'happy') {
   const mouth = {
-    sad: '<path d="M25 44 q7 -6 14 0" stroke="#141414" stroke-width="3" fill="none" stroke-linecap="round"/>',
-    meh: '<path d="M25 42 h14" stroke="#141414" stroke-width="3" stroke-linecap="round"/>',
-    happy: '<path d="M24 40 q8 8 16 0" stroke="#141414" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    sad: '<path d="M25 44 q7 -6 14 0" stroke="#2b3d36" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    meh: '<path d="M25 42 h14" stroke="#2b3d36" stroke-width="3" stroke-linecap="round"/>',
+    happy: '<path d="M24 40 q8 8 16 0" stroke="#2b3d36" stroke-width="3" fill="none" stroke-linecap="round"/>',
   }[mood];
   return `
     <svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="1" y="26" width="8" height="14" rx="3" fill="#8a877e"/>
-      <rect x="55" y="26" width="8" height="14" rx="3" fill="#8a877e"/>
-      <circle cx="32" cy="34" r="24" fill="#ff5a1f"/>
-      <rect x="9" y="18" width="46" height="7" rx="3.5" fill="#141414"/>
-      <circle cx="24" cy="32" r="3.5" fill="#141414"/>
-      <circle cx="40" cy="32" r="3.5" fill="#141414"/>
+      <rect x="1" y="26" width="8" height="14" rx="3" fill="#a9c4b9"/>
+      <rect x="55" y="26" width="8" height="14" rx="3" fill="#a9c4b9"/>
+      <circle cx="32" cy="34" r="24" fill="#8fd6b8"/>
+      <rect x="9" y="18" width="46" height="7" rx="3.5" fill="#ff9a8b"/>
+      <circle cx="24" cy="32" r="3.5" fill="#2b3d36"/>
+      <circle cx="40" cy="32" r="3.5" fill="#2b3d36"/>
       ${mouth}
     </svg>`;
 }

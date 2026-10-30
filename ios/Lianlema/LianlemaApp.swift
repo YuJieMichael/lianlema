@@ -10,7 +10,7 @@ struct LianlemaApp: App {
         WindowGroup {
             WebContainer()
                 .ignoresSafeArea()
-                .background(Color(red: 246 / 255, green: 245 / 255, blue: 241 / 255))
+                .background(Color(red: 242 / 255, green: 248 / 255, blue: 245 / 255))
                 .preferredColorScheme(.light)
         }
     }

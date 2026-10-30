@@ -10,7 +10,7 @@ struct WebContainer: UIViewRepresentable {
 
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
-        web.backgroundColor = UIColor(red: 246 / 255, green: 245 / 255, blue: 241 / 255, alpha: 1)
+        web.backgroundColor = UIColor(red: 242 / 255, green: 248 / 255, blue: 245 / 255, alpha: 1)
         // 安全区交给页面的 env(safe-area-inset-*) 处理
         web.scrollView.contentInsetAdjustmentBehavior = .never
         #if DEBUG
