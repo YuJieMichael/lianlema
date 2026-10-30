@@ -5,6 +5,9 @@
 // 发布在 claude.ai 时页面跑在受限框架里：下载走 downloads 能力，没有系统通知和日历文件
 const HOSTED = !!(window.claude && window.claude.use);
 if (HOSTED) document.documentElement.classList.add('hosted');
+// 在 iOS App（ios/）里运行时：系统通知、Apple 健康和分享交给原生
+const NATIVE = !!window.webkit?.messageHandlers?.native;
+function nativePost(msg) { window.webkit.messageHandlers.native.postMessage(msg); }
 // 发布后的地址，用来生成好友挑战链接
 const ARTIFACT_URL = 'https://claude.ai/artifact/22zvkRemP6et368RX8PPA8';
 
@@ -23,7 +26,7 @@ const STORE_KEY = 'fitness-app.v1';
 function defaults() {
   return {
     logs: {}, body: [], bodyInfo: { sex: null, age: null, height: null }, xp: {}, done: {}, water: {}, waterUnit: { kind: 'cup', ml: 250 }, track: null, profile: null,
-    feel: { right: 0, total: 0 }, feelBy: {}, pr: {}, gen: {}, rival: null,
+    feel: { right: 0, total: 0 }, feelBy: {}, feelOff: false, feelSkip: [], pr: {}, gen: {}, rival: null,
     remind: { on: false, every: 60, start: '09:00', end: '18:00', workdays: true, lastFired: 0 },
     usage: {},
   };
@@ -70,6 +73,9 @@ function weekXp() {
   for (let i = 0; i < 7; i++) sum += data.xp[dateKey(addDays(mon, i))] || 0;
   return sum;
 }
+// 发力感自检默认一直问，直到用户关掉全部或某个动作；设置页可以重新打开
+function feelOn(exId) { return !!FEEL[exId] && !data.feelOff && !data.feelSkip.includes(exId); }
+
 // 试用期统计：只记次数，不记内容
 function bump(key) { data.usage[key] = (data.usage[key] || 0) + 1; save(); }
 
@@ -116,6 +122,10 @@ function toast(msg) {
 }
 
 async function saveFile(name, text, type) {
+  if (NATIVE) {
+    nativePost({ type: 'share', filename: name, text });
+    return true;
+  }
   if (HOSTED) {
     const dl = await window.claude.use('downloads');
     if (!dl) { toast('这里暂时不能保存文件'); return false; }
@@ -455,6 +465,7 @@ const PAGES = {
   library: { title: '动作库', render: renderLibrary },
   stats: { title: '训练统计', render: renderStats },
   body: { title: '身体数据', render: renderBody },
+  settings: { title: '设置', render: renderSettings },
 };
 
 function render() {
@@ -478,6 +489,13 @@ document.querySelector('.tabbar').addEventListener('click', e => {
 
 // 标题栏里的「切换路线」按钮
 document.querySelector('.topbar').addEventListener('click', e => {
+  if (e.target.closest('[data-act="settings"]')) {
+    state.tab = 'settings';
+    state.preview = null;
+    render();
+    window.scrollTo(0, 0);
+    return;
+  }
   if (!e.target.closest('[data-act="pick-track"]')) return;
   state.picking = true;
   state.preview = null;
@@ -810,6 +828,10 @@ function renderLesson() {
         <div class="fb-head">${mascot(40, fb.mood)}<b>${fb.title}</b></div>
         ${fb.body}
         <button class="btn chunky block ${fb.cls === 'bad' ? 'red' : ''}" data-act="after-feel">继续</button>
+        <div class="feel-off">
+          <button class="link" data-act="feel-skip-ex">这个动作我会了，不用再问</button>
+          <button class="link" data-act="feel-off">以后都不问了</button>
+        </div>
       </div>`;
   }
 
@@ -961,7 +983,7 @@ lessonEl.addEventListener('click', e => {
       if (!(r > 0)) { toast('先填一下次数'); return; }
       L.sets[L.exIdx].push({ w: String(L.cur.w || 0), r: String(r) });
       L.xp += EX_BY_ID[exId].cardio ? cardioXp(r) : XP_SET;
-      if (L.sets[L.exIdx].length === 1 && FEEL[exId]) {
+      if (L.sets[L.exIdx].length === 1 && feelOn(exId)) {
         const f = FEEL[exId];
         L.opts = [
           ...shuffle([{ label: f.good, good: true }, ...f.bad.map(([label, cue]) => ({ label, cue }))]),
@@ -993,6 +1015,18 @@ lessonEl.addEventListener('click', e => {
       break;
     }
     case 'after-feel':
+      afterSet();
+      break;
+    case 'feel-skip-ex':
+      if (!data.feelSkip.includes(exId)) data.feelSkip.push(exId);
+      save();
+      toast(`${EX_BY_ID[exId].name}不再问发力感，可以在设置里打开`);
+      afterSet();
+      break;
+    case 'feel-off':
+      data.feelOff = true;
+      save();
+      toast('已关闭发力感自检，可以在设置里重新打开');
       afterSet();
       break;
     case 'rest-add':
@@ -1075,6 +1109,36 @@ function renderLibrary() {
     <div class="chips">${chips}</div>
     <div id="lib-list">${list || '<div class="empty">没有找到相关动作</div>'}</div>
     ${bar}`;
+}
+
+/* ---------- 设置 ---------- */
+
+function renderSettings() {
+  const skipped = data.feelSkip.filter(id => EX_BY_ID[id]);
+  const list = skipped.length ? `
+    <div class="muted set-sub">这些动作单独关掉了自检：</div>
+    ${skipped.map(id => `
+      <div class="row between history-item">
+        <span>${EX_BY_ID[id].name}</span>
+        <button class="btn small" data-act="feel-unskip" data-id="${id}">重新打开</button>
+      </div>`).join('')}
+    ${skipped.length > 1 ? '<button class="btn small ghost" data-act="feel-unskip-all">全部重新打开</button>' : ''}` : '';
+  return `
+    <div class="section-title">训练</div>
+    <div class="card">
+      <div class="row between">
+        <div><b>发力感自检</b><div class="muted set-sub">每个动作做完第一组，问你哪里最有感觉，帮你确认练对了</div></div>
+        <label class="switch"><input type="checkbox" id="set-feel" data-set="feel" ${data.feelOff ? '' : 'checked'} aria-label="发力感自检"><i></i></label>
+      </div>
+      ${data.feelOff ? '' : list}
+    </div>
+    <div class="card">
+      <div class="row between">
+        <div><b>开场问卷</b><div class="muted set-sub">目标、水平、器材、分化、有氧、伤病</div></div>
+        <button class="btn small" data-act="redo-quiz">重新做</button>
+      </div>
+    </div>
+    <div class="muted set-sub" style="padding:4px 2px">数据备份、好友挑战和试用反馈在「统计」页。</div>`;
 }
 
 /* ---------- 统计 ---------- */
@@ -1344,6 +1408,7 @@ function renderBody() {
         <div><label>日期</label><div class="field"><input id="in-date" type="date" value="${dateKey()}" max="${dateKey()}"></div></div>
         <div style="display:flex;align-items:flex-end"><button class="btn primary block" data-act="save-body">保存记录</button></div>
       </div>
+      ${NATIVE ? '<button class="btn block health-btn" data-act="health">❤️ 从 Apple 健康导入体重、体脂和身高</button>' : ''}
       <button class="link" data-act="tape">${state.tape ? '收起软尺估算' : '没有体脂秤？用软尺估算体脂率'}</button>
       ${state.tape ? tapeHtml() : ''}
     </div>
@@ -1460,6 +1525,7 @@ view.addEventListener('click', e => {
       toast('已按你的情况定制好路线');
       break;
     case 'redo-quiz':
+      state.tab = 'path';
       startQuiz();
       state.picking = false;
       break;
@@ -1580,6 +1646,13 @@ view.addEventListener('click', e => {
     case 'vs-enter':
       enterChallenge();
       return;
+    case 'feel-unskip':
+      data.feelSkip = data.feelSkip.filter(x => x !== id);
+      toast(`${EX_BY_ID[id].name}会重新问发力感`);
+      break;
+    case 'feel-unskip-all':
+      data.feelSkip = [];
+      break;
     case 'feedback':
       openFeedback(document.getElementById('feedback-card'));
       return;
@@ -1595,6 +1668,10 @@ view.addEventListener('click', e => {
       return;
 
     // 身体数据
+    case 'health':
+      nativePost({ type: 'health' });
+      toast('正在读取 Apple 健康…');
+      return;
     case 'bi-sex':
       data.bodyInfo = { ...data.bodyInfo, sex: el.dataset.v };
       break;
@@ -1644,6 +1721,13 @@ view.addEventListener('input', e => {
 
 view.addEventListener('change', e => {
   if (e.target.id === 'import-file') { importBackup(e.target.files[0]); return; }
+  if (e.target.dataset.set === 'feel') {
+    data.feelOff = !e.target.checked;
+    toast(data.feelOff ? '已关闭发力感自检' : '已打开发力感自检');
+    save();
+    render();
+    return;
+  }
   if (e.target.dataset.bi) {
     const v = parseFloat(e.target.value);
     const ok = e.target.dataset.bi === 'age' ? v >= 10 && v <= 100 : v >= 100 && v <= 250;
@@ -1662,8 +1746,9 @@ view.addEventListener('change', e => {
   if (toMin(r.end) <= toMin(r.start)) toast('下班时间要晚于上班时间');
   // 打开或改时间后，之前已经过去的时刻不再补提醒
   r.lastFired = Date.now();
-  if (k === 'on' && r.on && 'Notification' in window && Notification.permission === 'default') askNotify();
+  if (k === 'on' && r.on && !NATIVE && 'Notification' in window && Notification.permission === 'default') askNotify();
   save();
+  syncNativeReminders();
   render();
 });
 
@@ -1691,7 +1776,7 @@ function usageSummary() {
     `练了吗 · 使用数据（试用第 ${days} 天）`,
     `路线：${track().name}｜安排：${plan}｜有氧：${{ more: '多一点', some: '适量', none: '不加' }[cardioPref()]}｜工作：${work}｜水平：${{ new: '新手', mid: '有基础', pro: '老手' }[p.level]}`,
     `训练天数：${trainedDays} / ${days} 天｜最长连续：${best} 天｜中途退出：${u.quits || 0} 次`,
-    `发力感自检：${asked} 次｜准确率：${accuracy() === null ? '—' : accuracy() + '%'}｜说不清：${unsure} 次（${pct(unsure, asked)}）`,
+    `发力感自检（${data.feelOff ? '已全部关闭' : `开，单独关了 ${data.feelSkip.length} 个动作`}）：${asked} 次｜准确率：${accuracy() === null ? '—' : accuracy() + '%'}｜说不清：${unsure} 次（${pct(unsure, asked)}）`,
     `休息提醒：${data.remind.on ? '开' : '关'}｜弹出 ${u.remindFired || 0} 次 → 做小关 ${u.remindLesson || 0}、喝水 ${u.remindWater || 0}、稍后 ${u.remindSnooze || 0}、关掉 ${u.remindDismiss || 0}`,
     `分化：换成下一天 ${u.splitSkip || 0} 次｜手动换套组 ${u.variantPick || 0} 次`,
     `喝水达标：${waterDays} 天`,
@@ -1843,7 +1928,7 @@ function shareChallenge() {
 function shareText() {
   const payload = { n: data.profile.name, w: mondayKey(), xp: weekXp(), s: streak(), a: accuracy() };
   const code = 'vs-' + b64encode(payload);
-  const base = HOSTED ? ARTIFACT_URL : `${location.origin}${location.pathname}`;
+  const base = HOSTED || NATIVE ? ARTIFACT_URL : `${location.origin}${location.pathname}`;
   const head = `我这周在「练了吗」拿了 ${payload.xp} XP，连续 ${payload.s} 天🔥 敢来比吗？`;
   return base ? `${head}\n${base}#${code}` : `${head}\n挑战码：${code}`;
 }
@@ -1966,14 +2051,26 @@ function remindCard() {
         </div>
         <label class="row check-row"><input type="checkbox" data-r="workdays" ${r.workdays ? 'checked' : ''}> 只在工作日（周一到周五）</label>
         <div class="remind-actions">
-          ${HOSTED ? '' : permBtn}
-          ${HOSTED ? '' : '<button class="btn small" data-act="ics">📅 加到手机日历</button>'}
+          ${HOSTED || NATIVE ? '' : permBtn}
+          ${HOSTED || NATIVE ? '' : '<button class="btn small" data-act="ics">📅 加到手机日历</button>'}
           <button class="btn small ghost" data-act="remind-test">试一下</button>
         </div>
-        <div class="muted remind-note">${HOSTED
+        <div class="muted remind-note">${NATIVE ? nativeRemindNote() : HOSTED
           ? '页面开着时会准时提醒。网页版收不到锁屏通知，想要锁屏也能提醒，可以在手机日历里建一个工作日每小时重复的事件。'
           : 'App 开着时会准时提醒。想在锁屏或关掉 App 时也收到，点「加到手机日历」，交给系统日历提醒。'}</div>` : ''}
     </div>`;
+}
+
+function nativeRemindNote() {
+  const st = state.nativeRemind;
+  if (!st) return '正在安排系统通知…';
+  if (!st.granted) return '通知权限没打开：到 iPhone「设置 → 通知 → 练了吗」里打开，锁屏才能收到提醒。';
+  return `已安排 ${st.count} 个系统提醒，锁屏或关掉 App 也会准时提醒。${st.everyDay ? '提醒比较密，iOS 排不下工作日专属提醒，所以周末也会提醒。' : ''}`;
+}
+function syncNativeReminders() {
+  if (!NATIVE) return;
+  const r = data.remind;
+  nativePost({ type: 'reminders', on: r.on, every: r.every, start: r.start, end: r.end, workdays: r.workdays });
 }
 
 async function askNotify() {
@@ -1990,6 +2087,7 @@ async function askNotify() {
 }
 
 async function notify(title, body) {
+  if (NATIVE) return; // 系统通知已经由原生按时间表排好
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const opts = { body, tag: 'remind', renotify: true, icon: 'icon.svg' };
   try {
@@ -2059,6 +2157,42 @@ function downloadIcs() {
   toast(`已生成 ${slots.length} 个每日提醒，打开文件即可加入日历`);
 }
 
+/* ---------- iOS 原生回调 ---------- */
+
+if (NATIVE) {
+  window.nativeRemindStatus = st => {
+    state.nativeRemind = st;
+    if (st.on && st.granted === false) toast('通知权限没打开，锁屏收不到提醒');
+    if (state.tab === 'path') render();
+  };
+  // 点了系统通知打开 App：弹出页面里的提醒，可以直接开小关或记喝水
+  window.nativeReminderTapped = () => {
+    if (!state.lesson && !state.reminding) fireRemind();
+  };
+  window.nativeHealth = h => {
+    if (h.error) { toast(h.error); return; }
+    const got = [];
+    if (h.weight) {
+      const date = h.weightDate || dateKey();
+      const old = data.body.find(p => p.date === date);
+      // 体脂和体重在 30 天内测的才算同一次
+      const fatClose = h.fat && h.fatDate && Math.abs(parseKey(h.fatDate) - parseKey(date)) <= 30 * 864e5;
+      data.body = data.body.filter(p => p.date !== date);
+      data.body.push({ date, weight: Math.round(h.weight * 10) / 10, fat: fatClose ? Math.round(h.fat * 10) / 10 : old?.fat ?? null });
+      got.push(`体重 ${Math.round(h.weight * 10) / 10} kg`);
+      if (fatClose) got.push(`体脂 ${Math.round(h.fat * 10) / 10}%`);
+    }
+    const bi = { ...data.bodyInfo };
+    if (h.height) { bi.height = Math.round(h.height); got.push(`身高 ${bi.height} cm`); }
+    if (h.age && !bi.age) { bi.age = h.age; got.push(`年龄 ${h.age}`); }
+    if (h.sex && !bi.sex) { bi.sex = h.sex; got.push(h.sex === 'm' ? '性别 男' : '性别 女'); }
+    data.bodyInfo = bi;
+    save();
+    toast(got.length ? `已导入：${got.join('、')}` : 'Apple 健康里没找到数据，或者没有允许读取');
+    render();
+  };
+}
+
 /* ---------- 启动 ---------- */
 
 if (!HOSTED && 'serviceWorker' in navigator && location.protocol !== 'file:') {
@@ -2071,3 +2205,7 @@ window.addEventListener('hashchange', checkChallengeLink);
 render();
 checkChallengeLink();
 tickRemind();
+if (NATIVE) {
+  nativePost({ type: 'ready' });
+  syncNativeReminders();
+}
