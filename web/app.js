@@ -157,18 +157,18 @@ async function saveFile(name, text, type) {
 // 吉祥物「小铁」：戴头带的哑铃球
 function mascot(size = 64, mood = 'happy') {
   const mouth = {
-    sad: '<path d="M25 44 q7 -6 14 0" stroke="#12160a" stroke-width="3" fill="none" stroke-linecap="round"/>',
-    meh: '<path d="M25 42 h14" stroke="#12160a" stroke-width="3" stroke-linecap="round"/>',
-    happy: '<path d="M24 40 q8 8 16 0" stroke="#12160a" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    sad: '<path d="M25 44 q7 -6 14 0" stroke="#141414" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    meh: '<path d="M25 42 h14" stroke="#141414" stroke-width="3" stroke-linecap="round"/>',
+    happy: '<path d="M24 40 q8 8 16 0" stroke="#141414" stroke-width="3" fill="none" stroke-linecap="round"/>',
   }[mood];
   return `
     <svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="1" y="26" width="8" height="14" rx="3" fill="#5c6270"/>
-      <rect x="55" y="26" width="8" height="14" rx="3" fill="#5c6270"/>
-      <circle cx="32" cy="34" r="24" fill="#c6f432"/>
-      <rect x="9" y="18" width="46" height="7" rx="3.5" fill="#ff5a5f"/>
-      <circle cx="24" cy="32" r="3.5" fill="#12160a"/>
-      <circle cx="40" cy="32" r="3.5" fill="#12160a"/>
+      <rect x="1" y="26" width="8" height="14" rx="3" fill="#8a877e"/>
+      <rect x="55" y="26" width="8" height="14" rx="3" fill="#8a877e"/>
+      <circle cx="32" cy="34" r="24" fill="#ff5a1f"/>
+      <rect x="9" y="18" width="46" height="7" rx="3.5" fill="#141414"/>
+      <circle cx="24" cy="32" r="3.5" fill="#141414"/>
+      <circle cx="40" cy="32" r="3.5" fill="#141414"/>
       ${mouth}
     </svg>`;
 }
@@ -458,6 +458,8 @@ const state = {
   select: null,      // 自由训练选中的动作
   reminding: false,
   snoozeUntil: null,
+  lim: { lib: 12, hist: 10 },   // 滑到底加载更多：每个列表当前显示几条
+  revealFrom: {},               // 新加载出来的那几条从第几条开始，用来做模糊到清晰
 };
 
 const view = document.getElementById('view');
@@ -482,7 +484,88 @@ function render() {
   document.querySelectorAll('.tabbar button').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === state.tab));
   renderLesson();
+  if (state.tab !== lastTab) {
+    // 换页时整页内容从模糊到清晰
+    lastTab = state.tab;
+    view.classList.remove('page-in');
+    void view.offsetWidth;
+    view.classList.add('page-in');
+    clearTimeout(pageInTimer);
+    // 只在进入页面时播一次，之后同一页重绘不再模糊
+    pageInTimer = setTimeout(() => view.classList.remove('page-in'), 700);
+  }
+  afterRender();
+}
+
+let lastTab = null, pageInTimer;
+function afterRender() {
   window.SpectrumUI?.mountAll();
+  watchMore();
+  runStreams();
+}
+
+/* ---------- 滑到底加载更多 ---------- */
+
+const PAGE_SIZE = { lib: 12, hist: 10 };
+
+// 取当前页要显示的条目；from 之后的是刚加载出来的，加 reveal 做模糊到清晰
+function pageOf(key, items) {
+  const from = state.revealFrom[key] ?? Infinity;
+  state.revealFrom[key] = Infinity;
+  return { shown: items.slice(0, state.lim[key]), from, more: items.length > state.lim[key] };
+}
+
+// 列表底部的骨架屏，滑到这里就加载下一页
+function moreSkeleton(key, n = 2) {
+  const row = `<div class="card skel-card" aria-hidden="true"><div class="skel skel-icon"></div><div class="skel-lines"><div class="skel"></div><div class="skel short"></div></div></div>`;
+  return `<div class="more" data-more="${key}" aria-label="正在加载更多">${row.repeat(n)}</div>`;
+}
+function resetPage(key) {
+  state.lim[key] = PAGE_SIZE[key];
+  state.revealFrom[key] = Infinity;
+}
+
+let moreTimer = null;
+function checkMore() {
+  const el = view.querySelector('[data-more]');
+  if (!el || moreTimer || el.getBoundingClientRect().top > innerHeight + 120) return;
+  const key = el.dataset.more;
+  // 让骨架屏扫光露一会儿再接上下一页
+  moreTimer = setTimeout(() => {
+    moreTimer = null;
+    if (!el.isConnected) return;
+    state.revealFrom[key] = state.lim[key];
+    state.lim[key] += PAGE_SIZE[key];
+    render();
+  }, 600);
+}
+function watchMore() { checkMore(); }
+window.addEventListener('scroll', checkMore, { passive: true });
+
+/* ---------- 流式打字（教练气泡、发力感反馈） ---------- */
+
+const streamed = new Set();
+const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+function runStreams() {
+  document.querySelectorAll('#view [data-stream], #lesson [data-stream]').forEach(el => {
+    const text = el.textContent;
+    // 同一句话只打一次字，之后重绘直接显示
+    if (streamed.has(text)) return;
+    streamed.add(text);
+    if (REDUCED_MOTION) return;
+    const chars = [...text];
+    let i = 0;
+    el.textContent = '';
+    el.classList.add('streaming');
+    const step = () => {
+      if (!el.isConnected) return;
+      i = Math.min(chars.length, i + 1 + (Math.random() < .35 ? 1 : 0));
+      el.textContent = chars.slice(0, i).join('');
+      if (i < chars.length) setTimeout(step, 30 + Math.random() * 45);
+      else el.classList.remove('streaming');
+    };
+    setTimeout(step, 180);
+  });
 }
 
 document.querySelector('.tabbar').addEventListener('click', e => {
@@ -619,7 +702,7 @@ function renderPath() {
 
   return `
     ${statBar}
-    <div class="coach">${mascot(56, 'happy')}<div class="bubble">${msg}</div></div>
+    <div class="coach">${mascot(56, 'happy')}<div class="bubble" data-stream>${msg}</div></div>
     ${rivalBanner()}
     ${recCard()}
     ${water}
@@ -791,7 +874,7 @@ function renderLesson() {
           <div class="demo" data-ex="${exId}"></div>
           <div class="demo-cap"><i></i>亮色 = 应该发力的部位${FEEL[exId] ? `：${FEEL[exId].good}` : ''}</div>
         </div>
-        <div class="coach small">${mascot(40)}<div class="bubble">${L.cur.note}</div></div>
+        <div class="coach small">${mascot(40)}<div class="bubble" data-stream>${L.cur.note}</div></div>
         ${ex.cardio ? `
         <div class="big-inputs one">
           <label><span>时长</span>
@@ -826,9 +909,9 @@ function renderLesson() {
   if (L.result) {
     const picked = L.opts[L.choice];
     const fb = {
-      right: { cls: 'ok', mood: 'happy', title: `就是这个感觉！+${XP_FEEL} XP`, body: '<p>目标肌肉练到了，剩下几组保持这个感觉。</p>' },
-      wrong: { cls: 'bad', mood: 'sad', title: '发力跑偏了，调整一下', body: `<p>下一组试试：${picked.cue}</p><p class="muted">正确的感觉：${FEEL[exId].good}</p>` },
-      unsure: { cls: 'meh', mood: 'meh', title: '没关系，下一组再找找', body: `<p>放慢速度，用另一只手按住目标位置感受一下。</p><p class="muted">应该感觉到：${FEEL[exId].good}</p>` },
+      right: { cls: 'ok', mood: 'happy', title: `就是这个感觉！+${XP_FEEL} XP`, body: '<p data-stream>目标肌肉练到了，剩下几组保持这个感觉。</p>' },
+      wrong: { cls: 'bad', mood: 'sad', title: '发力跑偏了，调整一下', body: `<p data-stream>下一组试试：${picked.cue}</p><p class="muted">正确的感觉：${FEEL[exId].good}</p>` },
+      unsure: { cls: 'meh', mood: 'meh', title: '没关系，下一组再找找', body: `<p data-stream>放慢速度，用另一只手按住目标位置感受一下。</p><p class="muted">应该感觉到：${FEEL[exId].good}</p>` },
     }[L.result];
     foot = `
       <div class="feedback ${fb.cls}">
@@ -927,9 +1010,9 @@ function renderDone() {
       <h2 class="l-title">训练完成！</h2>
       <div class="muted">连续 ${streak()} 天 🔥</div>
       <div class="done-cards">
-        <div class="dc" style="--c:#ffb547"><span>获得 XP</span><b>⚡${L.xp}</b></div>
-        <div class="dc" style="--c:#5ad1ff"><span>发力准确</span><b>🎯${acc}</b></div>
-        <div class="dc" style="--c:#c6f432"><span>用时</span><b>⏱${mins}分</b></div>
+        <div class="dc" style="--c:var(--gold)"><span>获得 XP</span><b>⚡${L.xp}</b></div>
+        <div class="dc" style="--c:var(--blue)"><span>发力准确</span><b>🎯${acc}</b></div>
+        <div class="dc" style="--c:var(--accent)"><span>用时</span><b>⏱${mins}分</b></div>
       </div>
       ${prs}
     </div>
@@ -1069,7 +1152,8 @@ function renderLibrary() {
   const chips = ['全部', ...PARTS].map(p =>
     `<button class="chip ${p === state.part ? 'sel' : ''}" data-act="part" data-part="${p}">${p}</button>`).join('');
 
-  const list = items.map(e => {
+  const page = pageOf('lib', items);
+  const list = page.shown.map((e, i) => {
     const open = state.openEx === e.id;
     const f = FEEL[e.id];
     const mine = data.feelBy[e.id];
@@ -1088,7 +1172,7 @@ function renderLibrary() {
       ? `<button class="check-btn ${sel.includes(e.id) ? 'on' : ''}" data-act="sel" data-id="${e.id}" aria-label="选择">${sel.includes(e.id) ? sel.indexOf(e.id) + 1 : '＋'}</button>`
       : `<span class="chev">${open ? '▴' : '▾'}</span>`;
     return `
-      <div class="card ${open ? 'open' : ''}">
+      <div class="card ${open ? 'open' : ''} ${i >= page.from ? 'reveal' : ''}">
         <div class="ex-head" data-act="${sel ? 'sel' : 'open-ex'}" data-id="${e.id}">
           <div class="ex-emoji">${PART_EMOJI[e.part]}</div>
           <div>
@@ -1114,7 +1198,7 @@ function renderLibrary() {
     </div>
     ${sel ? '<div class="muted" style="margin-bottom:10px">按顺序点选想练的动作，再点下方开始</div>' : ''}
     <div class="chips">${chips}</div>
-    <div id="lib-list">${list || '<div class="empty">没有找到相关动作</div>'}</div>
+    <div id="lib-list">${list || '<div class="empty">没有找到相关动作</div>'}${page.more ? moreSkeleton('lib') : ''}</div>
     ${bar}`;
 }
 
@@ -1188,14 +1272,13 @@ function renderStats() {
     .sort((a, b) => b[1].date.localeCompare(a[1].date)).slice(0, 10)
     .map(([id, p]) => `<div class="row between history-item"><span>${EX_BY_ID[id].name}</span><span><b>${prLabel(id, p)}</b> <span class="muted">${p.date.slice(5)}</span></span></div>`).join('');
 
-  const history = Object.keys(data.logs)
-    .filter(k => trained(k))
-    .sort().reverse().slice(0, 14)
-    .map(k => {
+  const histPage = pageOf('hist', Object.keys(data.logs).filter(k => trained(k)).sort().reverse());
+  const history = histPage.shown
+    .map((k, i) => {
       const log = data.logs[k];
       const names = Object.keys(log).map(id => EX_BY_ID[id]?.name).filter(Boolean).join('、');
       return `
-        <div class="history-item">
+        <div class="history-item ${i >= histPage.from ? 'reveal' : ''}">
           <div class="row between"><b>${fmtDate(k)}</b><span class="muted">⚡${data.xp[k] || 0} · ${Math.round(volumeOf(log))} kg</span></div>
           <div class="muted">${names}</div>
         </div>`;
@@ -1237,6 +1320,7 @@ function renderStats() {
 
     <div class="section-title">训练历史</div>
     <div class="card">${history || '<div class="empty">还没有训练记录，去「闯关」打第一关吧</div>'}</div>
+    ${histPage.more ? moreSkeleton('hist', 1) : ''}
 
     <div class="section-title">试用反馈</div>
     <div class="card" id="feedback-card">
@@ -1623,6 +1707,7 @@ view.addEventListener('click', e => {
     // 动作库
     case 'part':
       state.part = el.dataset.part;
+      resetPage('lib');
       break;
     case 'open-ex':
       state.openEx = state.openEx === id ? null : id;
@@ -1719,10 +1804,12 @@ view.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.act === 'search') {
     state.query = el.value;
+    resetPage('lib');
     // 只刷新列表，保留搜索框焦点
     const tmp = document.createElement('div');
     tmp.innerHTML = renderLibrary();
     document.getElementById('lib-list').replaceWith(tmp.querySelector('#lib-list'));
+    afterRender();
   }
 });
 

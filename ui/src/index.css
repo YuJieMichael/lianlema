@@ -4,8 +4,8 @@
 @import "tailwindcss/utilities.css";
 @source "./";
 
-/* 练了吗只有深色界面 */
-@custom-variant dark (&:where(html, html *));
+/* 练了吗只有浅色界面：dark: 变体永远不生效 */
+@custom-variant dark (&:where(.lianlema-never-dark, .lianlema-never-dark *));
 
 /* shadcn 语义色映射到练了吗的色板 */
 @theme inline {

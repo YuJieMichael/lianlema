@@ -192,7 +192,7 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读取体重、体脂率和身高，用来计算基础代谢、热量目标和喝水目标。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "练了吗目前只读取健康数据，不会写入。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -218,7 +218,7 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读取体重、体脂率和身高，用来计算基础代谢、热量目标和喝水目标。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "练了吗目前只读取健康数据，不会写入。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
