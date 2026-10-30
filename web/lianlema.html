@@ -1,5 +1,6 @@
 <title>练了吗</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="spectrum.css">
+  <link rel="stylesheet" href="style.css">
 
 <header class="topbar">
   <h1 id="page-title">闯关</h1>
@@ -10,16 +11,17 @@
 <main id="view"></main>
 
 <nav class="tabbar">
-  <button data-tab="path" class="active"><span class="ico">🗺️</span>闯关</button>
-  <button data-tab="library"><span class="ico">📚</span>动作库</button>
-  <button data-tab="stats"><span class="ico">📈</span>统计</button>
-  <button data-tab="body"><span class="ico">⚖️</span>身体</button>
+  <button data-tab="path" class="active"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>闯关</button>
+  <button data-tab="library"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg></span>动作库</button>
+  <button data-tab="stats"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/></svg></span>统计</button>
+  <button data-tab="body"><span class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10a3 3 0 0 1 6 0"/><path d="M12 10l1.5-2"/></svg></span>身体</button>
 </nav>
 
 <div id="lesson" class="lesson"></div>
 <div id="remind-modal" class="remind-modal"></div>
 <div id="toast" class="toast"></div>
 
-<script src="data.js"></script>
+<script src="spectrum.js"></script>
+  <script src="data.js"></script>
 <script src="figure.js"></script>
 <script src="app.js"></script>

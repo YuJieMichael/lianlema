@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="练了吗">
-  <meta name="theme-color" content="#0f1115">
+  <meta name="theme-color" content="#f6f5f1">
   <title>练了吗</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="spectrum.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,15 +25,16 @@
   <main id="view"></main>
 
   <nav class="tabbar">
-    <button data-tab="path" class="active"><span class="ico">🗺️</span>闯关</button>
-    <button data-tab="library"><span class="ico">📚</span>动作库</button>
-    <button data-tab="stats"><span class="ico">📈</span>统计</button>
-    <button data-tab="body"><span class="ico">⚖️</span>身体</button>
+    <button data-tab="path" class="active"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>闯关</button>
+    <button data-tab="library"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg></span>动作库</button>
+    <button data-tab="stats"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/></svg></span>统计</button>
+    <button data-tab="body"><span class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10a3 3 0 0 1 6 0"/><path d="M12 10l1.5-2"/></svg></span>身体</button>
   </nav>
 
   <div id="lesson" class="lesson"></div>
   <div id="remind-modal" class="remind-modal"></div>
   <div id="toast" class="toast"></div>
+  <script src="spectrum.js"></script>
   <script src="data.js"></script>
   <script src="figure.js"></script>
   <script src="app.js"></script>
