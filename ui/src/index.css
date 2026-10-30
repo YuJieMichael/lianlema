@@ -1,0 +1,21 @@
+/* 只引入主题和工具类，不引入 preflight，免得重置「练了吗」原有样式；
+   工具类不放进 layer，否则会输给 style.css 里没分层的 button { background: none } */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+@source "./";
+
+/* 练了吗只有深色界面 */
+@custom-variant dark (&:where(html, html *));
+
+/* shadcn 语义色映射到练了吗的色板 */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--card);
+  --color-card-foreground: var(--text);
+  --color-muted-foreground: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-destructive: var(--danger);
+  --color-border: var(--line);
+}

@@ -112,8 +112,14 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// 数字变化时用 Spectrum UI 的数字滚动（没加载到 spectrum.js 时就是普通文字）
+function tick(key, value, prefix = '', suffix = '') {
+  return `<span data-ui="ticker" data-key="${key}" data-value="${value}" data-prefix="${escapeHtml(prefix)}" data-suffix="${escapeHtml(suffix)}">${escapeHtml(prefix)}${value}${escapeHtml(suffix)}</span>`;
+}
+
 let toastTimer;
 function toast(msg) {
+  if (window.SpectrumUI?.toast(msg)) return;
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
@@ -476,6 +482,7 @@ function render() {
   document.querySelectorAll('.tabbar button').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === state.tab));
   renderLesson();
+  window.SpectrumUI?.mountAll();
 }
 
 document.querySelector('.tabbar').addEventListener('click', e => {
@@ -576,8 +583,8 @@ function renderPath() {
 
   const statBar = `
     <div class="stat-pills">
-      <span class="pill ${doneToday ? 'fire' : ''}">🔥 ${s}</span>
-      <span class="pill">⚡ ${totalXp()} XP</span>
+      <span class="pill ${doneToday ? 'fire' : ''}">${tick('streak', s, '🔥 ')}</span>
+      <span class="pill">${tick('xp', totalXp(), '⚡ ', ' XP')}</span>
       <span class="pill">🎯 ${Math.min(xp, goal)}/${goal}</span>
     </div>`;
 
@@ -1198,8 +1205,8 @@ function renderStats() {
 
   return `
     <div class="kpis" style="grid-template-columns:1fr 1fr">
-      <div class="kpi"><b>🔥 ${streak()}</b><span>连续天数</span></div>
-      <div class="kpi"><b>⚡ ${totalXp()}</b><span>累计 XP</span></div>
+      <div class="kpi"><b>${tick('streak', streak(), '🔥 ')}</b><span>连续天数</span></div>
+      <div class="kpi"><b>${tick('xp', totalXp(), '⚡ ')}</b><span>累计 XP</span></div>
       <div class="kpi"><b>🎯 ${acc === null ? '—' : acc + '%'}</b><span>发力准确率（${data.feel.total} 次自检）</span></div>
       <div class="kpi"><b>${total >= 10000 ? (total / 1000).toFixed(1) + 't' : Math.round(total) + 'kg'}</b><span>累计训练量</span></div>
       <div class="kpi" style="grid-column:1/-1"><b>🫀 ${cardioWeek().min} 分钟</b><span>本周有氧（${cardioWeek().n} 次${cardioPref() === 'some' ? '，目标每周 3 次' : ''}）</span></div>
@@ -1326,8 +1333,8 @@ function metaCard() {
     <div class="card">
       ${info}
       <div class="meta-big">
-        <div><b>${r(m.bmr)}</b><span>基础代谢 kcal/天</span></div>
-        <div><b>${r(m.tdee)}</b><span>每日总消耗 kcal</span></div>
+        <div><b>${tick('bmr', r(m.bmr))}</b><span>基础代谢 kcal/天</span></div>
+        <div><b>${tick('tdee', r(m.tdee))}</b><span>每日总消耗 kcal</span></div>
       </div>
       <div class="muted meta-why">${formula}</div>
       <div class="meta-rows">
