@@ -1242,7 +1242,7 @@ function renderStats() {
 
     <div class="section-title">数据</div>
     <div class="card">
-      <div class="muted">数据只保存在这台设备的浏览器里。换手机或清理浏览器前，先导出备份。</div>
+      <div class="muted">${NATIVE ? '数据只保存在这台手机上。换手机或删掉 App 前，先导出备份。' : '数据只保存在这台设备的浏览器里。换手机或清理浏览器前，先导出备份。'}</div>
       <div class="row" style="gap:8px;margin-top:12px">
         <button class="btn small" data-act="export">⬇️ 导出备份</button>
         <button class="btn small" data-act="import">⬆️ 导入备份</button>
@@ -1661,7 +1661,8 @@ view.addEventListener('click', e => {
       return;
     case 'export':
       saveFile(`练了吗-备份-${dateKey()}.json`, JSON.stringify(data, null, 2), 'application/json')
-        .then(ok => { if (ok) toast('备份已导出'); });
+        // App 里弹出的是系统分享面板，用户还没选保存位置，不提示已导出
+        .then(ok => { if (ok && !NATIVE) toast('备份已导出'); });
       return;
     case 'import':
       document.getElementById('import-file').click();
@@ -2063,7 +2064,8 @@ function remindCard() {
 
 function nativeRemindNote() {
   const st = state.nativeRemind;
-  if (!st) return '正在安排系统通知…';
+  // 刚打开开关时手里还是关闭时的旧状态，等原生排完再说权限的事
+  if (!st || !st.on) return '正在安排系统通知…';
   if (!st.granted) return '通知权限没打开：到 iPhone「设置 → 通知 → 练了吗」里打开，锁屏才能收到提醒。';
   return `已安排 ${st.count} 个系统提醒，锁屏或关掉 App 也会准时提醒。${st.everyDay ? '提醒比较密，iOS 排不下工作日专属提醒，所以周末也会提醒。' : ''}`;
 }
