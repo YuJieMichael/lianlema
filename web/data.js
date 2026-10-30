@@ -132,26 +132,26 @@ const FEEL = {
 /* ---------- 闯关路线 ---------- */
 
 const OFFICE_UNITS = [
-  { title: '第 1 单元 · 离开工位', desc: '每坐 1 小时，起来 3 分钟', color: '#ff5a1f', lessons: [
+  { title: '第 1 单元 · 离开工位', desc: '每坐 1 小时，起来 3 分钟', color: '#3fae86', lessons: [
     ['neck-stretch', 'chest-open'], ['chair-squat', 'calf-raise'], ['wallsit', 'neck-stretch'], ['desk-pushup', 'chair-squat'] ] },
-  { title: '第 2 单元 · 午休小练', desc: '不出汗也能练到', color: '#2f6feb', lessons: [
+  { title: '第 2 单元 · 午休小练', desc: '不出汗也能练到', color: '#4b9ad0', lessons: [
     ['wallsit', 'plank'], ['desk-pushup', 'calf-raise'], ['chair-squat', 'wallsit', 'hip-flexor'], ['desk-pushup', 'plank', 'neck-stretch'] ] },
-  { title: '第 3 单元 · 下班前加练', desc: '把一天的久坐还回去', color: '#1f9d55', lessons: [
+  { title: '第 3 单元 · 下班前加练', desc: '把一天的久坐还回去', color: '#ec9a4c', lessons: [
     ['wallsit', 'chair-squat', 'plank'], ['desk-pushup', 'glute-bridge', 'calf-raise'], ['plank', 'crunch', 'chest-open'], ['chair-squat', 'desk-pushup', 'wallsit', 'plank'] ] },
-  { title: '第 4 单元 · 在家也能练', desc: '一块地垫就够', color: '#d63e7a', lessons: [
+  { title: '第 4 单元 · 在家也能练', desc: '一块地垫就够', color: '#e47c9c', lessons: [
     ['bw-squat', 'knee-pushup'], ['glute-bridge', 'superman', 'deadbug'], ['step-up', 'chair-dip', 'side-plank'], ['bw-squat', 'pushup', 'bird-dog', 'hip-flexor'] ] },
 ];
 
 const GYM_UNITS = [
-  { title: '第 1 单元 · 推起来', desc: '找到胸部发力感', color: '#ff5a1f', lessons: [
+  { title: '第 1 单元 · 推起来', desc: '找到胸部发力感', color: '#3fae86', lessons: [
     ['pushup', 'plank'], ['bench', 'pushup'], ['bench', 'incline-db'], ['bench', 'incline-db', 'fly'] ] },
-  { title: '第 2 单元 · 拉得动', desc: '用背拉，而不是用手', color: '#2f6feb', lessons: [
+  { title: '第 2 单元 · 拉得动', desc: '用背拉，而不是用手', color: '#4b9ad0', lessons: [
     ['pulldown', 'row'], ['pulldown', 'facepull'], ['row', 'pullup'], ['deadlift', 'seated-row', 'pulldown'] ] },
-  { title: '第 3 单元 · 站得稳', desc: '臀腿才是发动机', color: '#1f9d55', lessons: [
+  { title: '第 3 单元 · 站得稳', desc: '臀腿才是发动机', color: '#ec9a4c', lessons: [
     ['squat', 'lunge'], ['squat', 'rdl'], ['legpress', 'hip-thrust'], ['squat', 'rdl', 'leg-curl'] ] },
-  { title: '第 4 单元 · 肩与手臂', desc: '小肌群，轻重量找感觉', color: '#d63e7a', lessons: [
+  { title: '第 4 单元 · 肩与手臂', desc: '小肌群，轻重量找感觉', color: '#e47c9c', lessons: [
     ['ohp', 'lateral'], ['curl', 'pushdown'], ['ohp', 'lateral', 'facepull'], ['curl', 'hammer', 'dips'] ] },
-  { title: '第 5 单元 · 铁核心', desc: '稳住躯干，动作才能做对', color: '#6e56cf', lessons: [
+  { title: '第 5 单元 · 铁核心', desc: '稳住躯干，动作才能做对', color: '#8f7fd8', lessons: [
     ['plank', 'crunch'], ['legraise', 'deadbug'], ['plank', 'side-plank', 'legraise'] ] },
 ];
 
