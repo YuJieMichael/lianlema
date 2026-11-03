@@ -40,9 +40,12 @@ function loadData() {
   return { ...base, ...d, water, remind: { ...base.remind, ...d.remind } };
 }
 function save() {
+  data.updatedAt = Date.now();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* ignore */ }
+  window.cloudSaved?.();
 }
 const data = loadData();
+registerCustom();
 
 /* ---------- 工具 ---------- */
 
@@ -54,6 +57,14 @@ function parseKey(key) {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
+/* 重量单位：内部一律存 kg，只在显示和输入时换算 */
+const LB = 2.20462;
+const wUnit = () => data.unit || (/^en-(US|LR|MM)$/i.test(navigator.language || '') ? 'lb' : 'kg');
+const isLb = () => wUnit() === 'lb';
+// kg → 显示数值（lb 取到 0.5，kg 取到 0.1）
+function toU(kg) { const v = (Number(kg) || 0) * (isLb() ? LB : 1); return isLb() ? Math.round(v * 2) / 2 : Math.round(v * 10) / 10; }
+const fromU = v => Math.round((Number(v) || 0) / (isLb() ? LB : 1) * 1000) / 1000;
+const fmtW = kg => `${toU(kg)}${wUnit()}`;
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function midnight(d = new Date()) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function fmtDate(key) { const d = parseKey(key); return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[d.getDay()]}`; }
@@ -88,7 +99,15 @@ function streak() {
   const today = new Date();
   let n = 0;
   let d = trained(dateKey(today)) ? today : addDays(today, -1);
-  while (trained(dateKey(d))) { n++; d = addDays(d, -1); }
+  const shield = typeof hasShield === 'function' && hasShield();
+  let skips = 0;
+  for (;;) {
+    if (trained(dateKey(d))) n++;
+    // 天赋「护身符」：每连续 7 天可以空 1 天，但空出来的那天前一天必须练过
+    else if (shield && n > 0 && skips < Math.floor(n / 7) && trained(dateKey(addDays(d, -1)))) skips++;
+    else break;
+    d = addDays(d, -1);
+  }
   return n;
 }
 
@@ -156,20 +175,22 @@ async function saveFile(name, text, type) {
 
 // 吉祥物「小铁」：戴头带的哑铃球
 function mascot(size = 64, mood = 'happy') {
+  // 小铁是一只壶铃：把手 + 铁球身子 + 头带
   const mouth = {
-    sad: '<path d="M25 44 q7 -6 14 0" stroke="#2b3d36" stroke-width="3" fill="none" stroke-linecap="round"/>',
-    meh: '<path d="M25 42 h14" stroke="#2b3d36" stroke-width="3" stroke-linecap="round"/>',
-    happy: '<path d="M24 40 q8 8 16 0" stroke="#2b3d36" stroke-width="3" fill="none" stroke-linecap="round"/>',
+    sad: '<path d="M27 47 q5 -3.5 10 0"/>',
+    meh: '<path d="M27 46 h10"/>',
+    happy: '<path d="M26 44.5 q6 5 12 0"/>',
   }[mood];
   return `
-    <svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="1" y="26" width="8" height="14" rx="3" fill="#a9c4b9"/>
-      <rect x="55" y="26" width="8" height="14" rx="3" fill="#a9c4b9"/>
-      <circle cx="32" cy="34" r="24" fill="#8fd6b8"/>
-      <rect x="9" y="18" width="46" height="7" rx="3.5" fill="#ff9a8b"/>
-      <circle cx="24" cy="32" r="3.5" fill="#2b3d36"/>
-      <circle cx="40" cy="32" r="3.5" fill="#2b3d36"/>
-      ${mouth}
+    <svg class="mascot" width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="32" cy="61" rx="15" ry="2" fill="var(--text)" opacity=".12"/>
+      <path d="M20 30 V20 a12 9 0 0 1 24 0 V30" stroke="var(--text)" stroke-width="5.5"/>
+      <path d="M13 41 a19 19 0 0 1 38 0 c0 8 -3 13.5 -7 17.5 h-24 c-4 -4 -7 -9.5 -7 -17.5z" fill="var(--text)"/>
+      <path d="M17 34 q15 -6 30 0" stroke="var(--accent)" stroke-width="3.2"/>
+      <ellipse cx="22" cy="44" rx="3.2" ry="5" fill="var(--bg)" opacity=".08"/>
+      <circle cx="26.5" cy="40" r="2.3" fill="var(--bg)"/>
+      <circle cx="37.5" cy="40" r="2.3" fill="var(--bg)"/>
+      <g stroke="var(--bg)" stroke-width="2.2">${mouth}</g>
     </svg>`;
 }
 
@@ -208,7 +229,7 @@ const CARDIO_PACE = {
 // 今天要不要加有氧、加哪个；groups 是今天练的部位
 function cardioPlan(groups, seed, offset = 0) {
   const pref = cardioPref();
-  if (pref === 'none') return null;
+  if (pref === 'none' || atOffice()) return null; // 办公室不安排有氧，下班或在家再说
   let why;
   if (pref === 'more') {
     why = '每次练完加一段有氧';
@@ -254,7 +275,20 @@ function restSeconds() {
   const p = profile();
   return { muscle: 90, fat: 30, health: 60, sit: 30 }[p.goal] + (p.level === 'new' ? 15 : 0);
 }
+// 办公室能做的动作：站着或扶桌椅、不趴地、不出大汗、穿正装也能做
+const OFFICE_OK = new Set(['wallsit', 'desk-pushup', 'chair-squat', 'calf-raise', 'neck-stretch', 'chest-open', 'bw-squat',
+  'wall-angel', 'door-row', 'standing-knee', 'desk-plank']);
+// 现在在哪练：手动选过就用当天的选择；否则上班族工作日 9–18 点默认在公司
+function whereNow() {
+  const o = data.whereDay;
+  if (o && o.d === dateKey()) return o.v;
+  if (data.track !== 'office') return 'home';
+  const n = new Date(), h = n.getHours(), wd = n.getDay();
+  return wd >= 1 && wd <= 5 && h >= 9 && h < 18 ? 'office' : 'home';
+}
+const atOffice = () => whereNow() === 'office';
 function eqOk(ex) {
+  if (atOffice()) return OFFICE_OK.has(ex.id);
   const eq = profile().equip;
   return eq === 'gym' || ex.eq === 'none' || (eq === 'db' && ex.eq === 'db');
 }
@@ -285,6 +319,7 @@ function personalize(list, eqFilter) {
   return { ex: out, notes };
 }
 function lessonEqFilter() {
+  if (atOffice()) return e => OFFICE_OK.has(e.id);
   return data.track === 'office' ? e => e.eq === 'none' : e => true;
 }
 
@@ -311,7 +346,7 @@ function recommend() {
   const rnd = mulberry32(hashStr(`${day}#${roll}`));
   const rec = recovery();
   const pool = EXERCISES.filter(e => eqOk(e) && !conflicts(e).length && GROUPS.includes(mgOf(e))
-    && (profile().equip === 'none' || e.part !== '工位'));
+    && (atOffice() || profile().equip === 'none' || e.part !== '工位'));
   const groups = GROUPS
     .filter(g => pool.some(e => mgOf(e) === g))
     .map(g => ({ g, score: rec[g] + rnd() * 0.2 }))
@@ -320,7 +355,7 @@ function recommend() {
 
   const ex = [];
   for (const g of groups) byEq(pool.filter(e => mgOf(e) === g), rnd).slice(0, 2).forEach(e => ex.push(e.id));
-  const extraMg = { sit: '拉伸', health: '拉伸' }[profile().goal];
+  const extraMg = atOffice() ? '拉伸' : { sit: '拉伸', health: '拉伸' }[profile().goal];
   if (extraMg) {
     const extra = shuffle(EXERCISES.filter(e => mgOf(e) === extraMg && eqOk(e) && !conflicts(e).length), rnd)[0];
     if (extra) ex.push(extra.id);
@@ -338,7 +373,7 @@ function eqRank(e) {
 const byEq = (pool, rnd) => shuffle(pool, rnd).sort((a, b) => eqRank(a) - eqRank(b));
 
 function poolFor(g) {
-  const base = EXERCISES.filter(e => eqOk(e) && !conflicts(e).length && (profile().equip === 'none' || e.part !== '工位'));
+  const base = EXERCISES.filter(e => eqOk(e) && !conflicts(e).length && (atOffice() || profile().equip === 'none' || e.part !== '工位'));
   if (g === '三头') return base.filter(e => TRICEPS.includes(e.id));
   if (g === '二头') return base.filter(e => BICEPS.includes(e.id));
   return base.filter(e => mgOf(e) === g);
@@ -401,7 +436,11 @@ function advanceSplit(from) {
   delete data.gen[dateKey()];
 }
 
-function todayPlan() { return splitN() ? splitRec() : recommend(); }
+function todayPlan() {
+  const c = typeof coachPlanToday === 'function' && coachPlanToday();
+  if (c) return c;
+  return splitN() && !atOffice() ? splitRec() : recommend();
+}
 
 // 自动加重：上次全部完成目标次数就加重，否则保持
 function suggest(exId, override) {
@@ -420,11 +459,14 @@ function suggest(exId, override) {
   const minR = Math.min(...sets.map(s => Number(s.r)));
   const lastR = Math.max(...sets.map(s => Number(s.r)));
   const unit = ex.rl || '次';
+  // 返回的 w 是显示单位；lb 每次加 5 / 10 磅，kg 加 2.5 / 5 公斤
+  const wd = toU(w);
+  const stepU = !step ? 0 : isLb() ? (step >= 5 ? 10 : 5) : step;
   if (minR >= target) {
-    if (step && w > 0) return { w: w + step, r: target, note: `上次 ${w}kg×${target} 全部完成，今天加到 ${w + step}kg 💪` };
-    return { w, r: lastR + (ex.rl ? 5 : 1), note: '上次全部完成，今天每组多做一点' };
+    if (stepU && w > 0) return { w: wd + stepU, r: target, note: `上次 ${wd}${wUnit()}×${target} 全部完成，今天加到 ${wd + stepU}${wUnit()} 💪` };
+    return { w: wd, r: lastR + (ex.rl ? 5 : 1), note: '上次全部完成，今天每组多做一点' };
   }
-  return { w, r: target, note: `上次有组没做满 ${target}${unit}，${w ? `保持 ${w}kg ` : ''}再挑战` };
+  return { w: wd, r: target, note: `上次有组没做满 ${target}${unit}，${w ? `保持 ${wd}${wUnit()} ` : ''}再挑战` };
 }
 
 // 个人纪录：有负重按估算 1RM，自重按次数或秒数
@@ -441,7 +483,7 @@ function bestSet(exId, sets) {
 }
 function prLabel(exId, p) {
   const ex = EX_BY_ID[exId];
-  return p.w > 0 && !ex.rl ? `${p.w}kg × ${p.r}` : `${p.r}${ex.rl || '次'}${p.w > 0 ? `（+${p.w}kg）` : ''}`;
+  return p.w > 0 && !ex.rl ? `${fmtW(p.w)} × ${p.r}` : `${p.r}${ex.rl || '次'}${p.w > 0 ? `（+${fmtW(p.w)}）` : ''}`;
 }
 
 /* ---------- 路由 ---------- */
@@ -469,7 +511,10 @@ const lessonEl = document.getElementById('lesson');
 const modalEl = document.getElementById('remind-modal');
 
 const PAGES = {
-  path: { title: '闯关', render: renderPath },
+  path: { title: '今日', render: renderFeed },
+  hero: { title: '我', render: renderHero },
+  guild: { title: '公会', render: renderGuildPage },
+  tree: { title: '天赋树', render: renderTree },
   library: { title: '动作库', render: renderLibrary },
   stats: { title: '训练统计', render: renderStats },
   body: { title: '身体数据', render: renderBody },
@@ -480,9 +525,15 @@ function render() {
   const page = PAGES[state.tab];
   titleEl.textContent = page.title;
   subEl.textContent = '';
-  view.innerHTML = page.render();
+  view.innerHTML = page.render() + sheetHtml();
+  // 统计、身体、设置从「我」进入，顶部给一个返回
+  if (['stats', 'body', 'settings', 'photos'].includes(state.tab)) view.insertAdjacentHTML('afterbegin', '<button class="back-link" data-back>← 我</button>');
+  document.body.classList.toggle('has-sheet', !!(state.sheet || state.detail || state.photo));
+  if (state.tab !== 'hero') document.body.classList.remove('on-me');
+  if (state.tab !== 'path') document.body.classList.remove('on-feed');
   document.querySelectorAll('.tabbar button').forEach(b =>
-    b.classList.toggle('active', b.dataset.tab === state.tab));
+    b.classList.toggle('active', b.dataset.tab === ({ tree: 'hero', stats: 'hero', body: 'hero', settings: 'hero' }[state.tab] || state.tab)));
+  document.body.classList.toggle('on-tree', state.tab === 'tree');
   renderLesson();
   if (state.tab !== lastTab) {
     // 换页时整页内容从模糊到清晰
@@ -500,6 +551,7 @@ function render() {
 let lastTab = null, pageInTimer;
 function afterRender() {
   window.SpectrumUI?.mountAll();
+  if (state.tab === 'tree') treeMount();
   watchMore();
   runStreams();
 }
@@ -664,45 +716,62 @@ function renderPath() {
   const doneToday = trained(dateKey());
   subEl.innerHTML = `<button class="track-tag" data-act="pick-track">${track().emoji} ${track().name} ▾</button>`;
 
+  const now = new Date();
+  const WK = '日一二三四五六';
+  const pct = Math.min(1, xp / goal);
+  const C = 2 * Math.PI * 34;
   const statBar = `
-    <div class="stat-pills">
-      <span class="pill ${doneToday ? 'fire' : ''}">${tick('streak', s, '🔥 ')}</span>
-      <span class="pill">${tick('xp', totalXp(), '⚡ ', ' XP')}</span>
-      <span class="pill">🎯 ${Math.min(xp, goal)}/${goal}</span>
-    </div>`;
+    <section class="today">
+      <div class="today-l">
+        <div class="kicker">${now.getMonth() + 1} 月 ${now.getDate()} 日 · 星期${WK[now.getDay()]}</div>
+        <div class="today-nums">
+          <div class="${doneToday ? 'fire' : ''}"><b>${tick('streak', s)}</b><span>🔥 连续天数</span></div>
+          <div><b>${tick('xp', totalXp())}</b><span>⚡ 累计 XP</span></div>
+        </div>
+      </div>
+      <div class="goal-ring" style="--p:${pct}">
+        <svg viewBox="0 0 80 80"><circle class="bg" cx="40" cy="40" r="34"/>
+          <circle class="fg" cx="40" cy="40" r="34" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="--c:${C}"/></svg>
+        <div><b>${Math.min(xp, goal)}</b><span>/ ${goal}</span></div>
+        <em>今日目标</em>
+      </div>
+    </section>`;
 
   const msg = doneToday ? (xp >= goal ? '今日目标达成，明天见！' : `再拿 ${goal - xp} XP 就完成今日目标`)
     : s ? `连续 ${s} 天了，今天别断！` : (data.track === 'office' ? '坐太久了，起来动 3 分钟吧！' : '今天还没练，来一关吧！');
 
   const water = waterCard();
 
-  let n = 0;
-  const html = units().map((u, ui) => {
-    const nodes = list.filter(l => l.unit === ui).map(l => {
-      const gi = list.indexOf(l);
-      const status = data.done[l.id] ? 'done' : gi === cur ? 'current' : 'locked';
-      const x = ZIGZAG[n++ % ZIGZAG.length];
-      const icon = status === 'done' ? '✓' : status === 'locked' ? '🔒' : PART_EMOJI[EX_BY_ID[l.ex[0]].part];
-      return `
-        <div class="node-wrap" style="transform:translateX(${x}px)">
-          ${status === 'current' ? '<div class="start-tag">开始</div>' : ''}
-          <button class="node ${status}" style="--uc:${u.color}" data-act="preview" data-id="${l.id}"
-            aria-label="第 ${l.idx + 1} 关">${icon}</button>
-          ${state.preview === l.id ? previewPop(l, status, x) : ''}
-        </div>`;
-    }).join('');
-    return `
-      <section class="unit">
-        <div class="unit-banner" style="--uc:${u.color}">
-          <div><b>${u.title}</b><div>${u.desc}</div></div>
-        </div>
-        <div class="nodes">${nodes}</div>
-      </section>`;
-  }).join('');
+  const li = levelInfo();
+  const free = talentFree();
+  const levelRow = `
+    <button class="lv-row" data-act="go-hero">
+      <span class="lv-badge" aria-label="等级 ${li.lv}"><span>${li.lv}</span></span>
+      <span class="lv-mid"><span class="xpbar"><i style="width:${li.pct * 100}%"></i></span><small>${li.into} / ${li.need} XP</small></span>
+      <span class="lv-pts ${free > 0 ? 'has' : ''}">${free > 0 ? `${free} 点天赋可用` : '角色'} →</span>
+    </button>`;
+  const html = `
+    <div class="section-title">课程</div>
+    ${units().map((u, ui) => `
+      <section class="course">
+        <div class="course-h"><span class="unit-no">${String(ui + 1).padStart(2, '0')}</span>
+          <div><b>${u.title.split(' · ')[1] || u.title}</b><span class="muted">${u.desc}</span></div></div>
+        ${list.filter(l => l.unit === ui).map(l => {
+          const gi = list.indexOf(l);
+          const done = data.done[l.id];
+          return `<button class="course-row ${done ? 'done' : gi === cur ? 'next' : ''}" data-act="start" data-id="${l.id}">
+            <span class="cr-n">${done ? '✓' : String(l.idx + 1).padStart(2, '0')}</span>
+            <span class="cr-t">${l.ex.map(id => EX_BY_ID[id]?.name).filter(Boolean).join(' · ')}</span>
+            <span class="cr-x">${done ? `×${done}` : gi === cur ? '下一节' : ''}</span>
+          </button>`;
+        }).join('')}
+      </section>`).join('')}`;
 
   return `
     ${statBar}
+    ${levelRow}
     <div class="coach">${mascot(56, 'happy')}<div class="bubble" data-stream>${msg}</div></div>
+    ${typeof coachEntry === 'function' ? coachEntry() : ''}
     ${rivalBanner()}
     ${recCard()}
     ${water}
@@ -712,7 +781,7 @@ function renderPath() {
 
 function recCard() {
   const r = todayPlan();
-  const n = splitN();
+  const n = atOffice() || r.coach ? 0 : splitN();
   const strength = r.ex.filter(id => !EX_BY_ID[id].cardio);
   const names = strength.map(id => EX_BY_ID[id].name).join(' · ');
   const xp = strength.length * setsPerEx() * XP_SET + (r.cardio ? cardioXp(r.cardio.min) : 0) + XP_LESSON;
@@ -740,7 +809,9 @@ function recCard() {
       <div class="muted rec-hint">${n} 天一轮，每轮换一套动作，${K} 套轮流来。练完这天自动进入下一天，中间休息几天也不会跳过。
         <button class="link" data-act="split-skip">换成下一天</button></div>`;
   } else {
-    head = `<b>🎯 今日推荐</b> <span class="muted">练 ${r.groups.join(' + ')}</span>`;
+    head = r.coach
+      ? `<b>小铁的安排</b> <span class="muted">${escapeHtml(r.coach)}</span> <button class="link" data-act="coach-clear">恢复默认</button>`
+      : `<b>🎯 今日推荐</b> <span class="muted">练 ${r.groups.join(' + ')}</span>`;
     middle = `
       <div class="recovery">${GROUPS.map(g => {
         const p = Math.round(r.rec[g] * 100);
@@ -753,9 +824,14 @@ function recCard() {
     <div class="card rec">
       <div class="row between">
         <div>${head}</div>
-        ${n ? '' : '<button class="btn small ghost" data-act="reroll">换一组</button>'}
+        ${n || r.coach ? '' : '<button class="btn small ghost" data-act="reroll">换一组</button>'}
       </div>
-      <div class="seg" role="group" aria-label="训练安排">${seg}</div>
+      <div class="seg two where" role="group" aria-label="在哪练">
+        <button class="${atOffice() ? 'sel' : ''}" data-act="where" data-v="office">🏢 在公司</button>
+        <button class="${atOffice() ? '' : 'sel'}" data-act="where" data-v="home">🏠 在家 / 健身房</button>
+      </div>
+      ${atOffice() ? '<div class="muted rec-hint where-hint">只排站着、扶桌椅就能做的动作，不趴地、不出汗，穿正装也能做。</div>' : ''}
+      ${atOffice() ? '' : `<div class="seg" role="group" aria-label="训练安排">${seg}</div>`}
       ${middle}
       <div class="rec-list">${names}</div>
       ${cardioLine}
@@ -817,6 +893,7 @@ let restTimer = null;
 function setsOf(L, i) { return EX_BY_ID[L.ex[i]].cardio ? 1 : L.setsPer; }
 
 function startLesson(id, exList, notes = [], split = null, targets = {}) {
+  state.sheet = null; state.detail = null;
   if (!exList) {
     const l = lessons().find(x => x.id === id);
     ({ ex: exList, notes } = personalize(l.ex, lessonEqFilter()));
@@ -870,10 +947,11 @@ function renderLesson() {
         <div class="l-kicker">动作 ${L.exIdx + 1}/${L.ex.length}</div>
         <h2 class="l-title">${ex.name}</h2>
         <div class="set-dots">${dots}<span>第 ${n + 1} 组 / 共 ${per} 组</span></div>
-        <div class="demo-box">
-          <div class="demo" data-ex="${exId}"></div>
-          <div class="demo-cap"><i></i>亮色 = 应该发力的部位${FEEL[exId] ? `：${FEEL[exId].good}` : ''}</div>
-        </div>
+        ${DEMOS[exId] ? `<div class="demo-box">
+          ${demoTabs(exId)}<div class="demo" data-ex="${exId}" data-v="side"></div>
+          ${traceName(exId) ? `<div class="demo-cap"><i class="tr"></i>虚线 = <span class="tn-name">${traceName(exId)}</span>的运动轨迹，淡影是起始姿势</div>` : ''}
+        </div>` : ''}
+        ${muscleMap(exId) ? `<div class="mbox">${muscleMap(exId)}${FEEL[exId] ? `<div class="mfeel">应该感觉：${FEEL[exId].good}</div>` : ''}</div>` : ''}
         <div class="coach small">${mascot(40)}<div class="bubble" data-stream>${L.cur.note}</div></div>
         ${ex.cardio ? `
         <div class="big-inputs one">
@@ -882,7 +960,7 @@ function renderLesson() {
         </div>` : `
         <div class="big-inputs">
           <label><span>${ex.bw ? '附加重量' : '重量'}</span>
-            <input data-act="cur" data-k="w" inputmode="decimal" value="${L.cur.w}" placeholder="0"><em>kg</em></label>
+            <input data-act="cur" data-k="w" inputmode="decimal" value="${L.cur.w}" placeholder="0"><em><button class="unit-sw" data-act="unit-toggle">${wUnit()} ⇄</button></em></label>
           <label><span>${ex.rl ? '时长' : '次数'}</span>
             <input data-act="cur" data-k="r" inputmode="numeric" value="${L.cur.r}" placeholder="0"><em>${ex.rl || '次'}</em></label>
         </div>`}
@@ -1015,14 +1093,35 @@ function renderDone() {
         <div class="dc" style="--c:var(--accent)"><span>用时</span><b>⏱${mins}分</b></div>
       </div>
       ${prs}
+      ${L.bonus?.length ? `
+      <div class="bonus-list">
+        <div class="kicker">天赋加成</div>
+        ${L.bonus.map(b => `<div class="row between"><span>${b.name}</span><b class="${b.xp < 0 ? 'neg' : ''}">${b.xp > 0 ? '+' : ''}${b.xp}</b></div>`).join('')}
+      </div>` : ''}
+      <button class="btn ph-done" data-photo-add data-ex="${L.ex.join(',')}">拍一张打卡</button>
+      ${L.lvAfter > L.lvBefore ? `
+      <div class="lvup"><span class="kicker">升级</span><b>Lv ${L.lvAfter}</b><span>获得 ${L.lvAfter - L.lvBefore} 点天赋点</span></div>` : ''}
     </div>
-    <div class="l-foot"><button class="btn chunky block" data-act="close-lesson">继续</button></div>`;
+    <div class="l-foot">${L.lvAfter > L.lvBefore
+      ? '<div class="rest-foot"><button class="btn block" data-act="close-lesson">稍后</button><button class="btn chunky block" data-act="close-lesson" data-go="tree">去点天赋</button></div>'
+      : '<button class="btn chunky block" data-act="close-lesson">继续</button>'}</div>`;
 }
 
 function completeLesson() {
   const L = state.lesson;
   const key = dateKey();
   L.xp += XP_LESSON;
+  // 先算破纪录（天赋加成要用），再算天赋加成，最后才写入当天记录
+  L.ex.forEach((id, i) => {
+    const best = L.sets[i].length && bestSet(id, L.sets[i]);
+    const old = data.pr[id];
+    if (best && old && best.score > old.score) L.prs.push({ id, ...best });
+  });
+  L.unsure = Object.values(L.feelBy).reduce((a, f) => a + (f.unsure || 0), 0);
+  L.lvBefore = levelInfo().lv;
+  L.bonus = talentBonus(L);
+  L.baseXp = L.xp;
+  L.xp += L.bonus.reduce((a, b) => a + b.xp, 0);
   data.logs[key] ??= {};
   L.ex.forEach((id, i) => {
     if (!L.sets[i].length) return;
@@ -1032,11 +1131,11 @@ function completeLesson() {
     if (!best) return;
     const old = data.pr[id];
     if (!old || best.score > old.score) {
-      data.pr[id] = { ...best, date: key };
-      if (old) L.prs.push({ id, ...best }); // 第一次做只记录，不算破纪录
+      data.pr[id] = { ...best, date: key }; // 破纪录列表已在上面算好；第一次做只记录
     }
   });
   data.xp[key] = (data.xp[key] || 0) + L.xp;
+  L.lvAfter = levelInfo().lv;
   data.done[L.id] = (data.done[L.id] || 0) + 1;
   if (L.split && L.split.n === splitN()) advanceSplit(L.split.idx);
   data.feel.right += L.right;
@@ -1071,7 +1170,7 @@ lessonEl.addEventListener('click', e => {
     case 'finish-set': {
       const r = Number(L.cur.r);
       if (!(r > 0)) { toast('先填一下次数'); return; }
-      L.sets[L.exIdx].push({ w: String(L.cur.w || 0), r: String(r) });
+      L.sets[L.exIdx].push({ w: String(fromU(L.cur.w)), r: String(r) });
       L.xp += EX_BY_ID[exId].cardio ? cardioXp(r) : XP_SET;
       if (L.sets[L.exIdx].length === 1 && feelOn(exId)) {
         const f = FEEL[exId];
@@ -1127,8 +1226,17 @@ lessonEl.addEventListener('click', e => {
     case 'rest-skip':
       endRest();
       return;
+    case 'unit-toggle': {
+      const kg = fromU(L.cur.w);
+      data.unit = isLb() ? 'kg' : 'lb';
+      if (L.cur.w !== '' && L.cur.w != null) L.cur.w = toU(kg);
+      save();
+      toast(`重量单位改成 ${wUnit()}`);
+      break;
+    }
     case 'close-lesson':
       state.lesson = null;
+      if (el.dataset.go === 'tree') { state.tab = 'tree'; TV.sel = null; }
       break;
     default:
       return;
@@ -1159,15 +1267,18 @@ function renderLibrary() {
     const mine = data.feelBy[e.id];
     const warn = conflicts(e);
     const detail = open ? `
-      <div class="demo-box">
-        <div class="demo" data-ex="${e.id}"></div>
-        <div class="demo-cap"><i></i>亮色 = 应该发力的部位</div>
-      </div>
+      ${DEMOS[e.id] ? `<div class="demo-box">
+        ${demoTabs(e.id)}<div class="demo" data-ex="${e.id}" data-v="side"></div>
+        ${traceName(e.id) ? `<div class="demo-cap"><i class="tr"></i>虚线 = <span class="tn-name">${traceName(e.id)}</span>的运动轨迹，淡影是起始姿势</div>` : ''}
+        ${demoFrames(e.id)}
+      </div>` : ''}
+      ${muscleMap(e.id) ? `<div class="mbox">${muscleMap(e.id)}</div>` : ''}
       <div class="tip">${e.tip}</div>
       ${f ? `<div class="feel-good">✅ 应该感觉：${f.good}</div>
         ${f.bad.map(([label, cue]) => `<div class="feel-bad">⚠️ ${label}更累 → ${cue}</div>`).join('')}` : ''}
       ${mine?.total ? `<div class="feel-mine">🎯 你的发力准确率 ${Math.round(mine.right / mine.total * 100)}%（${mine.total} 次自检）</div>` : ''}
-      ${data.pr[e.id] ? `<div class="feel-mine">🏅 个人纪录 ${prLabel(e.id, data.pr[e.id])}</div>` : ''}` : '';
+      ${data.pr[e.id] ? `<div class="feel-mine">🏅 个人纪录 ${prLabel(e.id, data.pr[e.id])}</div>` : ''}
+      ${exHistory(e.id)}` : '';
     const right = sel
       ? `<button class="check-btn ${sel.includes(e.id) ? 'on' : ''}" data-act="sel" data-id="${e.id}" aria-label="选择">${sel.includes(e.id) ? sel.indexOf(e.id) + 1 : '＋'}</button>`
       : `<span class="chev">${open ? '▴' : '▾'}</span>`;
@@ -1177,7 +1288,7 @@ function renderLibrary() {
           <div class="ex-emoji">${PART_EMOJI[e.part]}</div>
           <div>
             <div class="ex-name">${e.name}</div>
-            <div class="muted">${e.part} · ${EQ_LABEL[e.eq]}${warn.length ? ` · <span class="warn">⚠️ 注意${jointNames(warn)}</span>` : ''}</div>
+            <div class="muted">${e.part} · ${EQ_LABEL[e.eq]}${OFFICE_OK.has(e.id) ? ' · <span class="office-ok">办公室可做</span>' : ''}${warn.length ? ` · <span class="warn">⚠️ 注意${jointNames(warn)}</span>` : ''}</div>
           </div>
           ${right}
         </div>
@@ -1189,6 +1300,7 @@ function renderLibrary() {
     <div class="select-bar">
       <button class="btn ghost" data-act="sel-cancel">取消</button>
       <button class="btn chunky" data-act="sel-start" ${sel.length ? '' : 'disabled'}>开始自由训练（${sel.length}）</button>
+      ${sel.length ? '<button class="btn small tpl-save" data-act="tpl-save">存为模板</button>' : ''}
     </div>` : '';
 
   return `
@@ -1196,6 +1308,9 @@ function renderLibrary() {
       <input class="search" type="search" placeholder="搜索 ${EXERCISES.length} 个动作" value="${escapeHtml(state.query)}" data-act="search">
       ${sel ? '' : '<button class="btn small" data-act="sel-mode">＋ 自由训练</button>'}
     </div>
+    ${sel ? '' : `<div class="lib-actions"><button class="btn small ghost" data-act="cf-open">＋ 自定义动作</button></div>`}
+    ${customForm()}
+    ${sel ? '' : templatesBlock()}
     ${sel ? '<div class="muted" style="margin-bottom:10px">按顺序点选想练的动作，再点下方开始</div>' : ''}
     <div class="chips">${chips}</div>
     <div id="lib-list">${list || '<div class="empty">没有找到相关动作</div>'}${page.more ? moreSkeleton('lib') : ''}</div>
@@ -1215,6 +1330,12 @@ function renderSettings() {
       </div>`).join('')}
     ${skipped.length > 1 ? '<button class="btn small ghost" data-act="feel-unskip-all">全部重新打开</button>' : ''}` : '';
   return `
+    <div class="section-title">存档</div>
+    <div class="card">
+      <b>云存档</b>
+      <div class="muted set-sub"><span data-cloud class="cloud-st ${typeof Cloud !== 'undefined' ? Cloud.state : 'local'}">${typeof cloudLabel === 'function' ? cloudLabel() : ''}</span></div>
+      <div class="muted set-sub">登录 claude.ai 打开这个页面，记录、等级、天赋会自动存到你自己的云端空间，只有你能看到。换手机、清缓存都不会丢。</div>
+    </div>
     <div class="section-title">训练</div>
     <div class="card">
       <div class="row between">
@@ -1222,6 +1343,12 @@ function renderSettings() {
         <label class="switch"><input type="checkbox" id="set-feel" data-set="feel" ${data.feelOff ? '' : 'checked'} aria-label="发力感自检"><i></i></label>
       </div>
       ${data.feelOff ? '' : list}
+    </div>
+    <div class="card">
+      <div class="row between">
+        <div><b>重量单位</b><div class="muted set-sub">北美健身房大多用磅（lb）。已有记录会自动换算，不会丢</div></div>
+        <div class="seg mini two unit-seg"><button class="${isLb() ? '' : 'sel'}" data-act="set-unit" data-v="kg">kg</button><button class="${isLb() ? 'sel' : ''}" data-act="set-unit" data-v="lb">lb</button></div>
+      </div>
     </div>
     <div class="card">
       <div class="row between">
@@ -1279,7 +1406,7 @@ function renderStats() {
       const names = Object.keys(log).map(id => EX_BY_ID[id]?.name).filter(Boolean).join('、');
       return `
         <div class="history-item ${i >= histPage.from ? 'reveal' : ''}">
-          <div class="row between"><b>${fmtDate(k)}</b><span class="muted">⚡${data.xp[k] || 0} · ${Math.round(volumeOf(log))} kg</span></div>
+          <div class="row between"><b>${fmtDate(k)}</b><span class="muted">⚡${data.xp[k] || 0} · ${Math.round(toU(volumeOf(log)))} ${wUnit()}</span></div>
           <div class="muted">${names}</div>
         </div>`;
     }).join('');
@@ -1288,11 +1415,11 @@ function renderStats() {
 
   return `
     <div class="kpis" style="grid-template-columns:1fr 1fr">
-      <div class="kpi"><b>${tick('streak', streak(), '🔥 ')}</b><span>连续天数</span></div>
-      <div class="kpi"><b>${tick('xp', totalXp(), '⚡ ')}</b><span>累计 XP</span></div>
-      <div class="kpi"><b>🎯 ${acc === null ? '—' : acc + '%'}</b><span>发力准确率（${data.feel.total} 次自检）</span></div>
-      <div class="kpi"><b>${total >= 10000 ? (total / 1000).toFixed(1) + 't' : Math.round(total) + 'kg'}</b><span>累计训练量</span></div>
-      <div class="kpi" style="grid-column:1/-1"><b>🫀 ${cardioWeek().min} 分钟</b><span>本周有氧（${cardioWeek().n} 次${cardioPref() === 'some' ? '，目标每周 3 次' : ''}）</span></div>
+      <div class="kpi hero-kpi" style="grid-column:1/-1"><span>连续天数</span><b>${tick('streak', streak())}<small> 天</small></b></div>
+      <div class="kpi"><span>累计 XP</span><b>${tick('xp', totalXp())}</b></div>
+      <div class="kpi"><span>发力准确率</span><b>${acc === null ? '—' : acc + '%'}</b><small>${data.feel.total} 次自检</small></div>
+      <div class="kpi"><span>累计训练量</span><b>${isLb() ? (toU(total) >= 10000 ? (toU(total) / 1000).toFixed(1) + '<small>k lb</small>' : Math.round(toU(total)) + '<small> lb</small>') : total >= 10000 ? (total / 1000).toFixed(1) + '<small> t</small>' : Math.round(total) + '<small> kg</small>'}</b></div>
+      <div class="kpi"><span>本周有氧</span><b>${cardioWeek().min}<small> 分钟</small></b><small>${cardioWeek().n} 次${cardioPref() === 'some' ? ' · 目标每周 3 次' : ''}</small></div>
     </div>
     <div class="card">
       <div class="muted" style="margin-bottom:6px">最近 7 天 XP（每日目标 ${goal}）</div>
@@ -1409,7 +1536,7 @@ function metaCard() {
 
   const goalText = { fat: '减脂：比消耗少 20%', muscle: '增肌：比消耗多 10%', health: '保持：和消耗持平', sit: '保持：和消耗持平' }[profile().goal];
   const formula = m.katch
-    ? `按去脂体重计算（Katch-McArdle）。你的体脂率 ${m.bf}%，肌肉、骨骼等去脂体重约 ${m.lbm.toFixed(1)} kg。${m.mifflin
+    ? `按去脂体重计算（Katch-McArdle）。你的体脂率 ${m.bf}%，肌肉、骨骼等去脂体重约 ${fmtW(m.lbm)}。${m.mifflin
       ? `只看身高体重年龄的普通公式会算成 ${r(m.mifflin)} kcal，${m.katch > m.mifflin ? `少算了 ${r(m.katch - m.mifflin)}` : `多算了 ${r(m.mifflin - m.katch)}`} kcal。` : ''}`
     : `按身高、体重、年龄、性别估算（Mifflin-St Jeor），没考虑肌肉量。肌肉多的人会被低估，脂肪多的人会被高估。记录一次体脂率（或用下面的软尺估算），就能按肌肉量算得更准。`;
   return `
@@ -1451,7 +1578,7 @@ function renderBody() {
   const list = [...data.body].sort((a, b) => a.date.localeCompare(b.date));
   const latest = list[list.length - 1];
   const first = list[0];
-  if (latest) subEl.textContent = `当前 ${latest.weight} kg`;
+  if (latest) subEl.textContent = `当前 ${fmtW(latest.weight)}`;
 
   let chart = '<div class="empty">记录两次以上即可看到体重趋势</div>';
   const pts = list.slice(-30);
@@ -1476,7 +1603,7 @@ function renderBody() {
         ${xy.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--accent)"/>`).join('')}
         <text x="${pad}" y="${H - 6}">${pts[0].date.slice(5)}</text>
         <text x="${W - pad}" y="${H - 6}" text-anchor="end">${pts[pts.length - 1].date.slice(5)}</text>
-        <text x="${pad}" y="14">${hi.toFixed(1)} kg</text>
+        <text x="${pad}" y="14">${fmtW(hi)}</text>
       </svg>`;
   }
 
@@ -1484,7 +1611,7 @@ function renderBody() {
 
   const rows = [...list].reverse().map(p => `
     <div class="history-item row between">
-      <div><b>${p.weight} kg</b>${p.fat ? `<span class="muted"> · 体脂 ${p.fat}%</span>` : ''}</div>
+      <div><b>${fmtW(p.weight)}</b>${p.fat ? `<span class="muted"> · 体脂 ${p.fat}%</span>` : ''}</div>
       <div class="row"><span class="muted">${fmtDate(p.date)}</span>
         <button class="icon-btn" data-act="del-body" data-date="${p.date}" aria-label="删除">✕</button></div>
     </div>`).join('');
@@ -1492,7 +1619,7 @@ function renderBody() {
   return `
     <div class="card">
       <div class="form-grid">
-        <div><label>体重 (kg)</label><div class="field"><input id="in-weight" inputmode="decimal" placeholder="${latest?.weight ?? '65.0'}"></div></div>
+        <div><label>体重 (${wUnit()})</label><div class="field"><input id="in-weight" inputmode="decimal" placeholder="${latest ? toU(latest.weight) : isLb() ? '145' : '65.0'}"></div></div>
         <div><label>体脂率 (%) 选填</label><div class="field"><input id="in-fat" inputmode="decimal" placeholder="${latest?.fat || '18'}"></div></div>
       </div>
       <div class="form-grid">
@@ -1505,8 +1632,8 @@ function renderBody() {
     </div>
     ${metaCard()}
     ${diff !== null ? `<div class="kpis" style="grid-template-columns:1fr 1fr">
-      <div class="kpi"><b>${latest.weight}</b><span>当前体重 kg</span></div>
-      <div class="kpi"><b>${diff > 0 ? '+' : ''}${diff}</b><span>较首次记录 kg</span></div>
+      <div class="kpi"><b>${toU(latest.weight)}</b><span>当前体重 ${wUnit()}</span></div>
+      <div class="kpi"><b>${diff > 0 ? '+' : ''}${diff === null ? diff : toU(diff)}</b><span>较首次记录 ${wUnit()}</span></div>
     </div>` : ''}
     <div class="card">${chart}</div>
     ${rows ? `<div class="section-title">全部记录</div><div class="card">${rows}</div>` : ''}`;
@@ -1526,7 +1653,7 @@ function waterGoalMl() {
   const base = w ? Math.min(4000, Math.max(1500, Math.round(w * 35 / 50) * 50)) : 2000;
   return base + (trained(dateKey()) ? 500 : 0);
 }
-const waterXp = ml => Math.max(1, Math.round(ml / 125));
+const waterXp = ml => Math.round(Math.max(1, Math.round(ml / 125)) * (typeof waterMul === 'function' ? waterMul() : 1));
 function waterToday() { return (data.water[dateKey()] || []).reduce((a, b) => a + b, 0); }
 const liters = ml => (ml / 1000).toFixed(ml % 1000 ? 1 : 0);
 
@@ -1548,7 +1675,7 @@ function waterCard() {
         `<button class="${u.kind === kind ? 'sel' : ''}" data-act="water-kind" data-kind="${kind}">${v.icon} ${v.label}</button>`).join('')}</div>
       <div class="chips">${WATER_SIZES[u.kind].map(ml =>
         `<button class="chip ${u.ml === ml ? 'sel' : ''}" data-act="water-size" data-ml="${ml}">${ml} ml</button>`).join('')}</div>
-      <div class="muted water-note">每天目标 ${liters(goal)} 升：${w ? `按体重 ${w} kg × 35 ml` : '还没记录体重，先按 2 升算（在「身体」页记录体重后会自动换算）'}${trained(dateKey()) ? '，今天练过再加 0.5 升' : ''}。</div>
+      <div class="muted water-note">每天目标 ${liters(goal)} 升：${w ? `按体重 ${fmtW(w)}（${Math.round(w)} kg × 35 ml）` : '还没记录体重，先按 2 升算（在「身体」页记录体重后会自动换算）'}${trained(dateKey()) ? '，今天练过再加 0.5 升' : ''}。</div>
     </div>` : '';
   return `
     <div class="card water">
@@ -1622,6 +1749,17 @@ view.addEventListener('click', e => {
       break;
 
     // 路线页
+    case 'where':
+      data.whereDay = { d: dateKey(), v: el.dataset.v };
+      delete data.gen[dateKey()];
+      break;
+    case 'set-unit':
+      data.unit = el.dataset.v;
+      toast(`重量单位改成 ${data.unit}`);
+      break;
+    case 'go-hero':
+      state.tab = 'hero';
+      break;
     case 'preview':
       state.preview = state.preview === id ? null : id;
       break;
@@ -1782,7 +1920,7 @@ view.addEventListener('click', e => {
       return;
     }
     case 'save-body': {
-      const weight = parseFloat(document.getElementById('in-weight').value);
+      const weight = fromU(parseFloat(document.getElementById('in-weight').value));
       const fat = parseFloat(document.getElementById('in-fat').value);
       const date = document.getElementById('in-date').value || dateKey();
       if (!(weight > 20 && weight < 400)) { toast('请输入有效体重'); return; }
@@ -1794,8 +1932,12 @@ view.addEventListener('click', e => {
     case 'del-body':
       data.body = data.body.filter(p => p.date !== el.dataset.date);
       break;
-    default:
-      return;
+    default: {
+      const r = feedAct(act, el) || photoAct(act, el) || (typeof heroAct === 'function' && heroAct(act, el)) || (typeof logAct === 'function' && logAct(act, el))
+        || (typeof coachAct === 'function' && coachAct(act, el)) || (typeof guildAct === 'function' && guildAct(act, el));
+      if (!r || r === 'noop') return;
+      break;
+    }
   }
   save();
   render();
@@ -2275,7 +2417,7 @@ if (NATIVE) {
       const fatClose = h.fat && h.fatDate && Math.abs(parseKey(h.fatDate) - parseKey(date)) <= 30 * 864e5;
       data.body = data.body.filter(p => p.date !== date);
       data.body.push({ date, weight: Math.round(h.weight * 10) / 10, fat: fatClose ? Math.round(h.fat * 10) / 10 : old?.fat ?? null });
-      got.push(`体重 ${Math.round(h.weight * 10) / 10} kg`);
+      got.push(`体重 ${fmtW(h.weight)}`);
       if (fatClose) got.push(`体脂 ${Math.round(h.fat * 10) / 10}%`);
     }
     const bi = { ...data.bodyInfo };
