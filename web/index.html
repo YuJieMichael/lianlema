@@ -7,17 +7,18 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="练了吗">
-  <meta name="theme-color" content="#f2f8f5">
+  <meta name="theme-color" content="#f5f5f6">
   <title>练了吗</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+SC:wght@500;700;900&display=swap">
   <link rel="stylesheet" href="spectrum.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
-    <h1 id="page-title">今日训练</h1>
+    <h1 id="page-title">今日</h1>
     <span id="page-sub" class="sub"></span>
     <button class="gear" data-act="settings" aria-label="设置">⚙︎</button>
   </header>
@@ -25,18 +26,31 @@
   <main id="view"></main>
 
   <nav class="tabbar">
-    <button data-tab="path" class="active"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span>闯关</button>
-    <button data-tab="library"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg></span>动作库</button>
-    <button data-tab="stats"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V6"/><path d="M17 16v-8"/></svg></span>统计</button>
-    <button data-tab="body"><span class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10a3 3 0 0 1 6 0"/><path d="M12 10l1.5-2"/></svg></span>身体</button>
+    <button data-tab="path" class="active"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z"/></svg></span>今日</button>
+    <button data-tab="library"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span>动作库</button>
+    <button class="tab-plus" data-plus aria-label="开始训练"><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
+    <button data-tab="guild"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><circle cx="16.5" cy="10" r="2.6"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5M14.5 14.6c.6-.4 1.3-.6 2-.6 2.2 0 3.8 1.5 4.3 4.5"/></svg></span>公会</button>
+    <button data-tab="hero"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-4 3.8-6 7.5-6s6.7 2 7.5 6"/></svg></span>我</button>
   </nav>
 
   <div id="lesson" class="lesson"></div>
   <div id="remind-modal" class="remind-modal"></div>
   <div id="toast" class="toast"></div>
+  <script src="icons.js"></script>
+  <script src="effects.js"></script>
   <script src="spectrum.js"></script>
   <script src="data.js"></script>
   <script src="figure.js"></script>
+  <script src="muscles.js"></script>
+  <script src="illo.js"></script>
+  <script src="talents.js"></script>
+  <script src="hero.js"></script>
+  <script src="logbook.js"></script>
+  <script src="coach.js"></script>
+  <script src="cloud.js"></script>
+  <script src="guild.js"></script>
+  <script src="photos.js"></script>
+  <script src="feed.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

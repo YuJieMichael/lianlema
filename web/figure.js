@@ -10,7 +10,7 @@
  * 正视图：hip, tt 侧倾, n 歪头, aL/eL/aR/eR 双臂外展与屈肘, l 双腿张开角
  */
 
-const FIG = { torso: 30, neck: 4, head: 7, ua: 17, fa: 16, th: 21, shin: 21, foot: 8 };
+const FIG = { torso: 30, neck: 4, head: 7.5, ua: 17, fa: 16, th: 21, shin: 21, foot: 8 };
 const GROUND = 108;
 
 const rad = d => d * Math.PI / 180;
@@ -73,12 +73,21 @@ function solveFront(p) {
   const arms = [-1, 1].map(side => {
     const a = side < 0 ? p.aL : p.aR, e = side < 0 ? p.eL : p.eR;
     const sho = [shoC[0] + side * 9, shoC[1]];
+    const tgt = side < 0 ? p.hL : p.hR;
+    // 给了手的位置就用 IK，手肘往外弯
+    if (tgt) { const [elbow, hand] = ik(sho, tgt, FIG.ua, FIG.fa, side < 0 ? -1 : 1); return { sho, elbow, hand }; }
     const d1 = dirDown(a || 0), d2 = dirDown((a || 0) + (e || 0));
     const elbow = vadd(sho, [d1[0] * side, d1[1]], FIG.ua);
     return { sho, elbow, hand: vadd(elbow, [d2[0] * side, d2[1]], FIG.fa) };
   });
   const legs = [-1, 1].map(side => {
     const hip = [c[0] + side * 6, c[1]];
+    // 脚踩地：脚的位置固定，膝盖按 kx 往外顶（正面看下蹲时大腿前缩）
+    if (p.fw != null) {
+      const ankle = [c[0] + side * p.fw, p.ay ?? GROUND - 2];
+      const knee = [(hip[0] + ankle[0]) / 2 + side * (p.kx || 0), (hip[1] + ankle[1]) / 2];
+      return { hip, knee, ankle, toe: vadd(ankle, [side * 6, p.ay ? 2 : 0]) };
+    }
     const d = dirDown(p.l || 0);
     const knee = vadd(hip, [d[0] * side, d[1]], FIG.th);
     const ankle = vadd(knee, [d[0] * side, d[1]], FIG.shin);
@@ -149,10 +158,15 @@ function drawFront(d, pose) {
   svg += seg(s.legs[0].hip, s.legs[1].hip, 'lim') + seg(s.arms[0].sho, s.arms[1].sho, 'lim');
   svg += segHl(s.shoC, vadd(s.shoC, vrot([0, -1], pose.tt || 0), FIG.neck), 'lim', hl.has('neck'));
   svg += `<circle cx="${f1(s.head[0])}" cy="${f1(s.head[1])}" r="${FIG.head}" class="headc"/>`;
+  if (d.prop === 'bar') {
+    const [l, r] = [s.arms[0].hand, s.arms[1].hand];
+    svg += seg([l[0] - 16, l[1]], [r[0] + 16, r[1]], 'prop') +
+      `<rect x="${f1(l[0] - 19)}" y="${f1(l[1] - 8)}" width="4" height="16" rx="1.5" class="prop-solid"/><rect x="${f1(r[0] + 15)}" y="${f1(r[1] - 8)}" width="4" height="16" rx="1.5" class="prop-solid"/>`;
+  }
   s.arms.forEach((a, i) => {
     if (d.cable) svg += seg(a.hand, d.cable[i], 'cable');
     svg += segHl(a.sho, a.elbow, 'lim', hl.has('ua')) + segHl(a.elbow, a.hand, 'lim', hl.has('fa'));
-    if (d.prop) svg += propAt(d.prop, a.hand, true);
+    if (d.prop && d.prop !== 'bar') svg += propAt(d.prop, a.hand, true);
   });
   return svg;
 }
@@ -170,14 +184,82 @@ function lerpPose(a, b, k) {
   return a;
 }
 
-function demoSvg(id, k) {
-  const d = DEMOS[id];
+// 运动轨迹：在 A→B 之间采样，挑移动最远的关节画出路径
+const TRACE_CACHE = {};
+function traceOf(id, view = 'side') {
+  const ck = id + '|' + view;
+  if (TRACE_CACHE[ck] !== undefined) return TRACE_CACHE[ck];
+  const d = view === 'front' && DEMOS_FRONT[id] ? DEMOS_FRONT[id] : DEMOS[id];
+  if (!d) return (TRACE_CACHE[ck] = null);
+  const pick = s => d.v === 'front'
+    ? { 手: s.arms[1].hand, 肘: s.arms[1].elbow, 头: s.head, 髋: s.legs ? s.legs[1].hip : null, 膝: s.legs?.[1].knee }
+    : { 手: s.arms.find(a => !a.far)?.hand, 髋: s.hip, 膝: s.legs.find(l => !l.far)?.knee, 头: s.head, 肩: s.sho };
+  const frames = [];
+  for (let i = 0; i <= 16; i++) {
+    const p = lerpPose(d.A, d.B || d.A, i / 16);
+    frames.push(pick(d.v === 'front' ? solveFront(p) : solveSide(p)));
+  }
+  let best = null;
+  for (const key of Object.keys(frames[0])) {
+    if (!frames[0][key]) continue;
+    if (d.tr && key !== d.tr) continue; // 手动指定了关节就只看它
+    const pts = frames.map(f => f[key]);
+    const len = pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
+    if (!best || len > best.len) best = { key, pts, len };
+  }
+  return (TRACE_CACHE[ck] = best && best.len > 6 ? best : null);
+}
+function traceSvg(tr) {
+  const p = tr.pts, n = p.length - 1;
+  const d = p.map((q, i) => `${i ? 'L' : 'M'}${f1(q[0])} ${f1(q[1])}`).join(' ');
+  const [x1, y1] = p[n - 1], [x2, y2] = p[n];
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const ah = [-0.5, 0.5].map(o => [x2 - Math.cos(ang + o) * 5, y2 - Math.sin(ang + o) * 5]);
+  return `<path d="${d}" class="trace"/><path d="M${f1(ah[0][0])} ${f1(ah[0][1])} L${f1(x2)} ${f1(y2)} L${f1(ah[1][0])} ${f1(ah[1][1])}" class="trace-head"/>
+    <circle cx="${f1(p[0][0])}" cy="${f1(p[0][1])}" r="2" class="trace-start"/>`;
+}
+
+function demoSvg(id, k, opts = {}) {
+  const d = opts.view === 'front' && DEMOS_FRONT[id] ? DEMOS_FRONT[id] : DEMOS[id];
   if (!d) return '';
   const pose = lerpPose(d.A, d.B || d.A, k);
-  const body = d.v === 'front' ? drawFront(d, pose) : drawSide(d, pose);
+  const draw = (dd, pp) => dd.v === 'front' ? drawFront(dd, pp) : drawSide(dd, pp);
+  const body = draw(d, pose);
+  // 起始姿势的淡影 + 关节轨迹（关键帧小图里不画）
+  const ghost = opts.plain || !d.B ? '' : `<g class="ghost">${draw(d, d.A)}</g>`;
+  const tr = opts.plain ? null : traceOf(id, opts.view);
+  // 脚下投影：跟着髋部走，离地越高越淡
+  const hx = pose.hip?.[0] ?? 80, lift = Math.max(0, Math.min(1, (GROUND - (pose.hip?.[1] ?? 64)) / 60));
   return `<svg viewBox="0 -14 160 126" class="fig" aria-hidden="true">
     <line x1="4" y1="${GROUND}" x2="156" y2="${GROUND}" class="ground"/>
-    ${sceneSvg(d.scene)}${body}</svg>`;
+    <ellipse cx="${f1(hx + 4)}" cy="${GROUND + 1}" rx="${f1(18 + lift * 14)}" ry="2.6" class="fshadow"/>
+    ${sceneSvg(d.scene)}${ghost}${body}${tr ? traceSvg(tr) : ''}</svg>`;
+}
+const traceName = (id, view) => traceOf(id, view)?.key || '';
+// 侧面 / 正面 切换（有正面演示的动作才显示）
+function demoTabs(id) {
+  if (!DEMOS_FRONT[id]) return '';
+  return `<div class="demo-tabs" role="group" aria-label="视角"><button type="button" class="on" data-view="side" aria-pressed="true">侧面</button><button type="button" data-view="front" aria-pressed="false">正面</button></div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.demo-tabs button');
+  if (!b) return;
+  e.stopPropagation();
+  const box = b.closest('.demo-box');
+  const demo = box?.querySelector('.demo');
+  if (!demo) return;
+  demo.dataset.v = b.dataset.view;
+  delete demo.dataset.drawn;
+  box.querySelectorAll('.demo-tabs button').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
+  const cap = box.querySelector('.demo-cap .tn-name');
+  if (cap) cap.textContent = traceName(demo.dataset.ex, b.dataset.view) || '关节';
+}, true);
+// 关键帧：起始 / 中段 / 顶峰
+function demoFrames(id) {
+  const d = DEMOS[id];
+  if (!d || !d.B) return '';
+  return `<div class="frames">${[[0, '起始'], [0.5, '中段'], [1, '顶峰']].map(([k, l]) =>
+    `<figure>${demoSvg(id, k, { plain: true })}<figcaption>${l}</figcaption></figure>`).join('')}</div>`;
 }
 
 /* ---------- 动画循环：只画页面上看得见的 .demo ---------- */
@@ -196,7 +278,7 @@ function tickDemos(ms) {
     const k = reduceMotion ? 1 : demoPhase(ms);
     document.querySelectorAll('.demo[data-ex]').forEach(el => {
       if (reduceMotion && el.dataset.drawn) return;
-      el.innerHTML = demoSvg(el.dataset.ex, k);
+      el.innerHTML = demoSvg(el.dataset.ex, k, { view: el.dataset.v });
       el.dataset.drawn = '1';
     });
   }
@@ -230,6 +312,18 @@ const DEMOS = {
   'chest-open': { hl: ['torso'], scene: [['line', 92, -12, 92, 108, 4]],
     A: { hip: [70, 64], t: 0, leg: { at: [70, 106] }, arm: { at: [88, 18], b: 1 } },
     B: { hip: [76, 64], t: 12, leg: { at: [70, 106] }, arm: { at: [88, 18], b: 1 } } },
+  'wall-angel': { v: 'front', hl: ['ua'],
+    A: { hip: [80, 64], aL: 90, eL: 90, aR: 90, eR: 90, l: 4 },
+    B: { hip: [80, 64], aL: 155, eL: 15, aR: 155, eR: 15, l: 4 } },
+  'door-row': { hl: ['torso', 'ua'], scene: [['line', 104, -12, 104, 108, 4]],
+    A: { hip: [82.3, 67.9], t: -25, leg: { at: [100, 106] }, arm: { at: [102, 56], b: 1 } },
+    B: { hip: [94.2, 64.4], t: -8, leg: { at: [100, 106] }, arm: { at: [102, 56], b: 1 } } },
+  'standing-knee': { hl: ['torso', 'th'],
+    A: { hip: [70, 64], t: 0, leg: { h: 0, k: 0 }, leg2: { h: 0, k: 0 }, arm: { s: 10, e: 20 } },
+    B: { hip: [70, 64], t: 6, leg: { h: 90, k: 90 }, leg2: { h: 0, k: 0 }, arm: { s: 20, e: 80 } } },
+  'desk-plank': { hl: ['torso'], scene: [['rect', 100, 74, 44, 4], ['line', 140, 78, 140, 108]],
+    A: { hip: [67, 73.6], t: 50, leg: { h: -50, k: 0 }, arm: { at: [104, 74] } },
+    B: { hip: [67, 72.8], t: 49, leg: { h: -49, k: 0 }, arm: { at: [104, 74] } } },
   'hip-flexor': { hl: ['th2'],
     A: { hip: [62, 86], t: -4, leg: { at: [92, 106] }, leg2: { h: -25, k: 65, f: 90 }, arm: { s: 40, e: 20 } },
     B: { hip: [70, 88], t: -10, leg: { at: [92, 106] }, leg2: { h: -42, k: 48, f: 90 }, arm: { s: 40, e: 20 } } },
@@ -394,4 +488,55 @@ const DEMOS = {
   'high-knee': { hl: ['th'],
     A: { hip: [70, 64], t: 0, leg: { h: 90, k: 95 }, leg2: { h: 0, k: 0 }, arm: { s: -30, e: 80 }, arm2: { s: 40, e: 80 } },
     B: { hip: [70, 64], t: 0, leg: { h: 0, k: 0 }, leg2: { h: 90, k: 95 }, arm: { s: 40, e: 80 }, arm2: { s: -30, e: 80 } } },
+};
+
+/* 手动指定轨迹关节：自动挑「移动最多」不一定是最该看的 */
+Object.entries({
+  pullup: '头', pulldown: '手', bench: '手', 'db-bench': '手', 'incline-db': '手', row: '手', 'db-row': '手', 'seated-row': '手',
+  pushup: '肩', 'knee-pushup': '肩', 'desk-pushup': '肩', 'pike-pushup': '头', dips: '肩', 'chair-dip': '髋',
+  squat: '髋', 'bw-squat': '髋', 'goblet-squat': '髋', 'chair-squat': '髋', deadlift: '髋', rdl: '髋', lunge: '髋', 'step-up': '髋',
+  'glute-bridge': '髋', 'hip-thrust': '髋', crunch: '头', legraise: '膝', ohp: '手', 'db-press': '手', curl: '手', hammer: '手',
+  'door-row': '肩', 'standing-knee': '膝',
+}).forEach(([id, j]) => { if (DEMOS[id]) DEMOS[id].tr = j; });
+
+/* ---------- 正面视角 ----------
+ * hip 髋中心；fw 两脚距中线；kx 膝盖外顶；ay 脚踝高度（提踵）；hL/hR 两手位置（IK） */
+const F_STAND = { hip: [80, 64], fw: 8, kx: 0 };
+const DEMOS_FRONT = {
+  squat: { v: 'front', hl: ['th'], prop: 'bar', tr: '髋',
+    A: { ...F_STAND, fw: 12, hL: [62, 30], hR: [98, 30] },
+    B: { hip: [80, 86], fw: 12, kx: 8, hL: [62, 52], hR: [98, 52] } },
+  'bw-squat': { v: 'front', hl: ['th'], tr: '髋',
+    A: { ...F_STAND, fw: 11, hL: [74, 44], hR: [86, 44] },
+    B: { hip: [80, 86], fw: 11, kx: 8, hL: [74, 64], hR: [86, 64] } },
+  'goblet-squat': { v: 'front', hl: ['th'], prop: 'db', tr: '髋',
+    A: { ...F_STAND, fw: 12, hL: [77, 46], hR: [83, 46] },
+    B: { hip: [80, 86], fw: 12, kx: 9, hL: [77, 68], hR: [83, 68] } },
+  'chair-squat': { v: 'front', hl: ['th'], tr: '髋', scene: [['rect', 62, 84, 36, 4], ['line', 64, 88, 64, 108], ['line', 96, 88, 96, 108]],
+    A: { ...F_STAND, fw: 10, hL: [74, 44], hR: [86, 44] },
+    B: { hip: [80, 82], fw: 10, kx: 6, hL: [74, 62], hR: [86, 62] } },
+  wallsit: { v: 'front', hl: ['th'], tr: '膝',
+    A: { hip: [80, 82], fw: 10, kx: 6, hL: [70, 70], hR: [90, 70] },
+    B: { hip: [80, 83], fw: 10, kx: 7, hL: [70, 71], hR: [90, 71] } },
+  'calf-raise': { v: 'front', hl: ['th'], tr: '头',
+    A: { ...F_STAND, fw: 7, hL: [66, 64], hR: [94, 64] },
+    B: { hip: [80, 57], fw: 7, ay: 99, hL: [66, 57], hR: [94, 57] } },
+  ohp: { v: 'front', hl: ['ua'], prop: 'bar', tr: '手',
+    A: { ...F_STAND, fw: 9, hL: [64, 38], hR: [96, 38] },
+    B: { ...F_STAND, fw: 9, hL: [66, 1], hR: [94, 1] } },
+  'db-press': { v: 'front', hl: ['ua'], prop: 'db', tr: '手',
+    A: { ...F_STAND, fw: 9, hL: [60, 30], hR: [100, 30] },
+    B: { ...F_STAND, fw: 9, hL: [71, 0], hR: [89, 0] } },
+  pullup: { v: 'front', hl: ['ua'], tr: '头', scene: [['line', 46, -4, 114, -4, 3]],
+    A: { hip: [80, 58], l: 4, hL: [62, -4], hR: [98, -4] },
+    B: { hip: [80, 38], l: 6, hL: [62, -4], hR: [98, -4] } },
+  pulldown: { v: 'front', hl: ['ua'], prop: 'bar', tr: '手', cable: [[80, -14], [80, -14]], scene: [['rect', 62, 88, 36, 4], ['line', 80, 92, 80, 108]],
+    A: { hip: [80, 86], fw: 12, kx: 4, hL: [62, 24], hR: [98, 24] },
+    B: { hip: [80, 86], fw: 12, kx: 4, hL: [65, 50], hR: [95, 50] } },
+  pushdown: { v: 'front', hl: ['fa'], prop: 'handle', tr: '手', cable: [[80, -14], [80, -14]],
+    A: { ...F_STAND, fw: 9, hL: [75, 50], hR: [85, 50] },
+    B: { ...F_STAND, fw: 9, hL: [73, 86], hR: [87, 86] } },
+  facepull: { v: 'front', hl: ['ua'], tr: '手',
+    A: { ...F_STAND, fw: 9, hL: [77, 34], hR: [83, 34] },
+    B: { ...F_STAND, fw: 9, hL: [66, 20], hR: [94, 20] } },
 };

@@ -16,6 +16,10 @@ const EXERCISES = [
   { id: 'calf-raise', name: '站姿提踵', part: '工位', mg: '腿', eq: 'none', bw: true, target: 20, joints: ['踝'], tip: '扶着桌子，脚跟抬到最高停 1 秒再慢慢放下。' },
   { id: 'neck-stretch', name: '颈肩拉伸', part: '工位', mg: '拉伸', eq: 'none', bw: true, rl: '秒', target: 30, tip: '一只手把头轻轻拉向一侧，另一侧肩膀往下沉。' },
   { id: 'chest-open', name: '靠门扩胸拉伸', part: '工位', mg: '拉伸', eq: 'none', bw: true, rl: '秒', target: 30, joints: ['肩'], tip: '小臂贴门框，身体慢慢往前走，打开含了一天的胸。' },
+  { id: 'wall-angel', name: '靠墙天使', part: '工位', mg: '背', eq: 'none', bw: true, target: 10, joints: ['肩'], tip: '后脑、背和屁股贴墙，手臂摆成 W 贴着墙往上滑到 Y，再慢慢收回。' },
+  { id: 'door-row', name: '门框划船', part: '工位', mg: '背', eq: 'none', bw: true, target: 12, tip: '双手抓稳门框或结实的柱子，脚靠近门框，身体后仰手臂伸直，用背把胸口拉向门框。' },
+  { id: 'standing-knee', name: '站姿抬膝', part: '工位', mg: '核心', eq: 'none', bw: true, target: 20, tip: '站直收紧肚子，交替把膝盖抬到髋部高度，身体不要往后仰。' },
+  { id: 'desk-plank', name: '扶桌平板', part: '工位', mg: '核心', eq: 'none', bw: true, rl: '秒', target: 30, joints: ['腕'], tip: '双手撑桌沿，脚往后走到身体成一条斜线，收紧肚子和屁股保持住。' },
   { id: 'hip-flexor', name: '跪姿髋屈肌拉伸', part: '工位', mg: '拉伸', eq: 'none', bw: true, rl: '秒', target: 30, tip: '后膝跪地，收紧臀部把骨盆往前推，坐久了的大腿前侧会被拉开。' },
 
   { id: 'bench', name: '杠铃卧推', part: '胸', eq: 'gym', joints: ['肩', '腕'], tip: '肩胛后收下沉，杠铃下放到乳头连线，脚踩实地面。' },
@@ -86,6 +90,10 @@ const FEEL = {
   'calf-raise': { good: '小腿后侧发酸', bad: [['脚踝', '动作放慢，顶端停 1 秒'], ['没什么感觉', '站到台阶边缘，加大下放幅度']] },
   'neck-stretch': { good: '脖子侧面到肩膀被拉长', bad: [['脖子后面发紧', '头往侧面倒，不是往前低'], ['没什么感觉', '另一侧的手往下够，肩膀用力沉']] },
   'chest-open': { good: '胸口和肩膀前侧被拉开', bad: [['肩膀里面刺痛', '手肘放低到肩膀以下，幅度减小'], ['没什么感觉', '身体再往前走一步，挺胸']] },
+  'wall-angel': { good: '肩胛骨中间和上背发酸', bad: [['腰部离墙', '收肚子，下背压回墙面，手臂幅度减小'], ['肩膀前面', '手肘和手背尽量贴墙，只滑到不痛的高度']] },
+  'door-row': { good: '肩胛骨往中间夹、背部发力', bad: [['手臂', '先夹肩胛骨再弯手肘，想象用手肘往后拉'], ['腰部', '身体保持一条直线，屁股别往下坠']] },
+  'standing-knee': { good: '下腹部收紧', bad: [['大腿前侧', '抬膝时先收腹，速度放慢'], ['下背', '身体别往后仰，上身稍微前倾一点']] },
+  'desk-plank': { good: '肚子绷紧', bad: [['手腕', '手掌压实桌沿，手腕在肩膀正下方'], ['腰部塌陷', '收紧屁股，身体成一条直线']] },
   'hip-flexor': { good: '后腿大腿前侧被拉长', bad: [['下背', '收紧臀部，骨盆往前推，别塌腰'], ['膝盖', '膝盖下垫个软垫或叠起的衣服']] },
   bench: { good: '胸口被撑开、往中间挤', bad: [['肩膀前侧', '肩胛后收下沉，像把肩膀塞进后裤兜'], ['手肘或手腕', '手肘别外展到 90°，收到 45°–60°']] },
   'db-bench': { good: '胸口被撑开', bad: [['肩膀前侧', '肩胛收紧贴凳，手肘收到 45°'], ['手腕', '手腕立直，哑铃在小臂正上方']] },
@@ -132,26 +140,26 @@ const FEEL = {
 /* ---------- 闯关路线 ---------- */
 
 const OFFICE_UNITS = [
-  { title: '第 1 单元 · 离开工位', desc: '每坐 1 小时，起来 3 分钟', color: '#3fae86', lessons: [
+  { title: '第 1 单元 · 离开工位', desc: '每坐 1 小时，起来 3 分钟', color: '#ff5a1f', lessons: [
     ['neck-stretch', 'chest-open'], ['chair-squat', 'calf-raise'], ['wallsit', 'neck-stretch'], ['desk-pushup', 'chair-squat'] ] },
-  { title: '第 2 单元 · 午休小练', desc: '不出汗也能练到', color: '#4b9ad0', lessons: [
-    ['wallsit', 'plank'], ['desk-pushup', 'calf-raise'], ['chair-squat', 'wallsit', 'hip-flexor'], ['desk-pushup', 'plank', 'neck-stretch'] ] },
-  { title: '第 3 单元 · 下班前加练', desc: '把一天的久坐还回去', color: '#ec9a4c', lessons: [
-    ['wallsit', 'chair-squat', 'plank'], ['desk-pushup', 'glute-bridge', 'calf-raise'], ['plank', 'crunch', 'chest-open'], ['chair-squat', 'desk-pushup', 'wallsit', 'plank'] ] },
-  { title: '第 4 单元 · 在家也能练', desc: '一块地垫就够', color: '#e47c9c', lessons: [
+  { title: '第 2 单元 · 午休小练', desc: '不出汗也能练到', color: '#2f6feb', lessons: [
+    ['wallsit', 'door-row'], ['desk-pushup', 'standing-knee'], ['chair-squat', 'wall-angel', 'chest-open'], ['desk-pushup', 'desk-plank', 'neck-stretch'] ] },
+  { title: '第 3 单元 · 下班前加练', desc: '把一天的久坐还回去', color: '#1f9d55', lessons: [
+    ['wallsit', 'door-row', 'desk-plank'], ['desk-pushup', 'bw-squat', 'wall-angel'], ['chair-squat', 'standing-knee', 'chest-open'], ['door-row', 'desk-pushup', 'wallsit', 'desk-plank'] ] },
+  { title: '第 4 单元 · 在家也能练', desc: '一块地垫就够', color: '#d63e7a', lessons: [
     ['bw-squat', 'knee-pushup'], ['glute-bridge', 'superman', 'deadbug'], ['step-up', 'chair-dip', 'side-plank'], ['bw-squat', 'pushup', 'bird-dog', 'hip-flexor'] ] },
 ];
 
 const GYM_UNITS = [
-  { title: '第 1 单元 · 推起来', desc: '找到胸部发力感', color: '#3fae86', lessons: [
+  { title: '第 1 单元 · 推起来', desc: '找到胸部发力感', color: '#ff5a1f', lessons: [
     ['pushup', 'plank'], ['bench', 'pushup'], ['bench', 'incline-db'], ['bench', 'incline-db', 'fly'] ] },
-  { title: '第 2 单元 · 拉得动', desc: '用背拉，而不是用手', color: '#4b9ad0', lessons: [
+  { title: '第 2 单元 · 拉得动', desc: '用背拉，而不是用手', color: '#2f6feb', lessons: [
     ['pulldown', 'row'], ['pulldown', 'facepull'], ['row', 'pullup'], ['deadlift', 'seated-row', 'pulldown'] ] },
-  { title: '第 3 单元 · 站得稳', desc: '臀腿才是发动机', color: '#ec9a4c', lessons: [
+  { title: '第 3 单元 · 站得稳', desc: '臀腿才是发动机', color: '#1f9d55', lessons: [
     ['squat', 'lunge'], ['squat', 'rdl'], ['legpress', 'hip-thrust'], ['squat', 'rdl', 'leg-curl'] ] },
-  { title: '第 4 单元 · 肩与手臂', desc: '小肌群，轻重量找感觉', color: '#e47c9c', lessons: [
+  { title: '第 4 单元 · 肩与手臂', desc: '小肌群，轻重量找感觉', color: '#d63e7a', lessons: [
     ['ohp', 'lateral'], ['curl', 'pushdown'], ['ohp', 'lateral', 'facepull'], ['curl', 'hammer', 'dips'] ] },
-  { title: '第 5 单元 · 铁核心', desc: '稳住躯干，动作才能做对', color: '#8f7fd8', lessons: [
+  { title: '第 5 单元 · 铁核心', desc: '稳住躯干，动作才能做对', color: '#6e56cf', lessons: [
     ['plank', 'crunch'], ['legraise', 'deadbug'], ['plank', 'side-plank', 'legraise'] ] },
 ];
 
